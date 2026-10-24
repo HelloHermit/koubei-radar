@@ -1,0 +1,301 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources xmlns:tools="http://schemas.android.com/tools">
+    <string name="app_name">口碑雷达</string>
+
+    <!-- Common -->
+    <string name="action_cancel">取消</string>
+    <string name="action_confirm">确定</string>
+    <string name="action_details">详情</string>
+    <string name="action_go_settings">去设置</string>
+    <string name="action_order">去点单</string>
+    <string name="action_retry">重试</string>
+    <string name="action_save">保存</string>
+    <string name="msg_save_failed">保存失败，请重试</string>
+    <string name="list_separator">、</string>
+
+    <!-- Navigation -->
+    <string name="nav_home">推荐</string>
+    <string name="nav_agent">智能体</string>
+    <string name="nav_import">导入</string>
+
+    <!-- Scoring presets -->
+    <string name="preset_reputation">口碑优先</string>
+    <string name="preset_value">性价比</string>
+    <string name="preset_fast">速度</string>
+
+    <!-- Shop facts and content descriptions -->
+    <string name="shop_sales_format">月售 %1$s</string>
+    <string name="shop_price_format">人均 %1$s</string>
+    <string name="shop_distance_format">距离 %1$s</string>
+    <string name="shop_delivery_minutes_format">约 %1$d 分钟送达</string>
+    <string name="shop_rating_count_format">(%1$s 条评价)</string>
+    <string name="shop_unrated">暂无评分</string>
+    <string name="cd_back">返回</string>
+    <string name="cd_score">综合口碑分 %1$d 分，满分 100</string>
+    <string name="cd_score_unknown">数据不足，暂无综合分</string>
+    <string name="cd_rating">评分 %1$s</string>
+    <string name="cd_rating_with_count">评分 %1$s，共 %2$s 条评价</string>
+    <string name="cd_score_bar">%1$s %2$d 分</string>
+    <string name="cd_screenshot">第 %1$d 张截图</string>
+    <string name="cd_remove_screenshot">移除第 %1$d 张截图</string>
+
+    <!-- Errors: shop sources -->
+    <string name="error_source_auth">高德 Key 无效或没有权限。请在设置中检查（需要「Web服务」类型的 Key）。</string>
+    <string name="error_source_quota">高德接口的调用次数已达上限，请稍后再试。</string>
+    <string name="error_source_network">网络连接失败，请检查网络后重试。</string>
+    <string name="error_source_parse">收到了无法识别的数据，请稍后重试。</string>
+    <string name="error_source_other">获取附近店铺失败，请稍后重试。</string>
+
+    <!-- Errors: LLM providers -->
+    <string name="error_llm_auth">API Key 不正确或没有权限，请到设置中检查。</string>
+    <string name="error_llm_rate_limit">请求太频繁或额度不足，请稍后再试。</string>
+    <string name="error_llm_network">网络连接失败，请检查网络和接口地址。</string>
+    <string name="error_llm_bad_request">服务商拒绝了请求，请检查设置里的模型名称和接口地址。</string>
+    <string name="error_llm_server">AI 服务暂时不可用，请稍后重试。</string>
+    <string name="error_llm_refusal">模型拒绝回答这个请求，换个说法试试。</string>
+    <string name="error_llm_other">AI 服务出错了，请稍后重试。</string>
+    <string name="error_llm_not_configured">还没有配置 AI 服务，请先到设置中填写 API Key。</string>
+    <string name="error_agent_unexpected">智能体出错了，请稍后重试。</string>
+    <string name="error_import_bad_request">服务商拒绝了请求。如果当前模型不支持识图，请在设置中填写「识图模型」。</string>
+
+    <!-- Home -->
+    <string name="home_action_refresh">刷新</string>
+    <string name="home_action_settings">设置</string>
+    <string name="home_location_unknown">未定位</string>
+    <string name="home_location_device">当前位置</string>
+    <string name="home_location_locating">定位中…</string>
+    <string name="home_location_accuracy">定位精度约 %1$d 米</string>
+    <string name="home_location_hint">点击设置位置</string>
+    <string name="home_source_demo">演示数据</string>
+    <string name="home_source_amap">高德地图</string>
+    <string name="home_demo_banner">当前显示的是离线演示数据。在设置中填写高德「Web服务」Key，即可查看你附近的真实店铺。</string>
+    <string name="home_demo_banner_action">去设置</string>
+    <string name="home_demo_banner_dismiss">知道了</string>
+    <string name="home_results_count">为你找到 %1$d 家 · 按口碑排序</string>
+    <string name="home_score_disclaimer">综合分是依据评分、评价数和评价内容的估算，仅供参考，不构成对商家的事实判断。</string>
+    <string name="home_loading">正在寻找附近口碑好店…</string>
+    <string name="home_needs_location_title">需要你的位置</string>
+    <string name="home_needs_location_body">高德数据按位置检索附近的店铺。位置只用于高德检索，不会发给 AI 服务商。</string>
+    <string name="home_action_allow_location">允许定位</string>
+    <string name="home_action_open_app_settings">打开系统设置</string>
+    <string name="home_action_enter_address">输入地址</string>
+    <string name="home_error_title">加载失败</string>
+    <string name="home_no_shops_title">附近没有找到店铺</string>
+    <string name="home_no_shops_body">试试换个位置，或在「导入」页加入外卖平台的截图。</string>
+    <string name="home_action_reload">重新加载</string>
+    <string name="home_action_change_place">换个位置</string>
+    <string name="home_no_match_title">没有符合条件的店铺</string>
+    <string name="home_no_match_body">候选池里有 %1$d 家店，但都不满足当前的筛选条件。</string>
+    <string name="home_action_relax">放宽条件</string>
+    <string name="home_action_edit_criteria">修改条件</string>
+    <string name="home_msg_locating_failed">无法获取当前位置。请检查定位开关，或手动输入地址。</string>
+    <string name="home_msg_permission_denied">没有定位权限。你可以手动输入地址，或稍后在系统设置中开启。</string>
+    <string name="home_msg_relaxed">已放宽筛选条件</string>
+
+    <!-- Home: address dialog -->
+    <string name="address_title">设置位置</string>
+    <string name="address_use_current">使用当前位置</string>
+    <string name="address_label">输入地址</string>
+    <string name="address_hint">例如：望京SOHO、徐家汇</string>
+    <string name="address_search">查找</string>
+    <string name="home_address_empty">请输入一个地址</string>
+    <string name="home_address_needs_key">按地址定位需要先在设置中填写高德 Key（演示数据不支持）。</string>
+    <string name="home_address_not_found">没有找到这个地址，试试加上城市或更具体的名称。</string>
+
+    <!-- Criteria -->
+    <string name="criteria_edit">筛选</string>
+    <string name="criteria_edit_unrestricted">筛选：不限</string>
+    <string name="criteria_unrestricted">不限条件</string>
+    <string name="criteria_join">；</string>
+    <string name="criteria_min_rating">评分 ≥ %1$s</string>
+    <string name="criteria_min_count">评价 ≥ %1$d</string>
+    <string name="criteria_max_distance">距离 ≤ %1$s</string>
+    <string name="criteria_price_range">人均 %1$s–%2$s</string>
+    <string name="criteria_price_max">人均 ≤ %1$s</string>
+    <string name="criteria_price_min">人均 ≥ %1$s</string>
+    <string name="criteria_max_minutes">≤ %1$d 分钟送达</string>
+    <string name="criteria_max_fee">配送费 ≤ %1$s</string>
+    <string name="criteria_include">想吃：%1$s</string>
+    <string name="criteria_exclude">不要：%1$s</string>
+    <string name="criteria_only_open">仅营业中</string>
+    <string name="criteria_min_score">综合分 ≥ %1$d</string>
+    <string name="criteria_sheet_title">筛选条件</string>
+    <string name="criteria_reset">重置</string>
+    <string name="criteria_apply">应用</string>
+    <string name="criteria_any">不限</string>
+    <string name="criteria_section_rating">最低评分</string>
+    <string name="criteria_section_count">最少评价数</string>
+    <string name="criteria_section_distance">最远距离</string>
+    <string name="criteria_section_price">人均价格</string>
+    <string name="criteria_section_minutes">最长送达时间</string>
+    <string name="criteria_section_platforms">外卖平台</string>
+    <string name="criteria_option_min_rating">≥ %1$s</string>
+    <string name="criteria_option_min_count">≥ %1$d</string>
+    <string name="criteria_option_max_distance">%1$s 内</string>
+    <string name="criteria_option_minutes">%1$d 分钟内</string>
+    <string name="criteria_include_label">想吃（关键词）</string>
+    <string name="criteria_exclude_label">不想吃（关键词）</string>
+    <string name="criteria_keywords_hint">用逗号或空格分隔，例如：川菜 火锅</string>
+    <string name="criteria_only_open_title">只看营业中的店</string>
+
+    <!-- Order -->
+    <string name="order_title">去点单</string>
+    <string name="order_explain">将复制店名「%1$s」。打开应用后，在搜索框里粘贴即可找到这家店。</string>
+    <string name="order_shop_available">这家店支持</string>
+    <string name="order_not_installed">未检测到安装</string>
+    <string name="order_msg_opened">已复制「%1$s」，请在%2$s的搜索框中粘贴</string>
+    <string name="order_msg_not_installed">没有安装%2$s，店名「%1$s」已复制到剪贴板</string>
+    <string name="order_msg_failed">无法打开%2$s，店名「%1$s」已复制到剪贴板</string>
+
+    <!-- Agent -->
+    <string name="agent_title">智能体</string>
+    <string name="agent_action_new">新对话</string>
+    <string name="agent_action_send">发送</string>
+    <string name="agent_action_fallback">改用规则排序</string>
+    <string name="agent_action_rule_based">先用规则排序看看</string>
+    <string name="agent_welcome_title">说说你想吃什么</string>
+    <string name="agent_welcome_body">我会按口碑帮你筛选候选店铺、复核评价并说明理由，还可以接着追问，比如「换一家不辣的」。</string>
+    <string name="agent_example_1">晚饭想吃清淡的，人均30以内，评价靠谱</string>
+    <string name="agent_example_2">离我近、送得快、别踩雷</string>
+    <string name="agent_example_3">有没有适合两个人的川菜</string>
+    <string name="agent_input_hint">说说你想吃什么…</string>
+    <string name="agent_input_hint_disabled">先在设置中配置 AI 服务</string>
+    <string name="agent_setup_body">还没有配置 AI 服务。在设置里填写 API Key 后，就能用一句话让智能体帮你选店；也可以先用规则排序。</string>
+    <string name="agent_running_title">智能体正在工作…</string>
+    <string name="agent_step_thinking">正在思考（第 %1$d 步）…</string>
+    <string name="agent_criteria_line">已为你筛选：%1$s</string>
+    <string name="agent_degraded">智能体没有给出结构化的推荐，下面是按口碑评分排出的结果。</string>
+    <string name="agent_pick_rank">第 %1$d 名</string>
+    <string name="agent_pick_dishes">可点菜</string>
+    <string name="agent_rule_based_title">规则排序结果（未使用 AI）</string>
+    <string name="agent_rule_based_body">已按口碑评分为你排出前 %1$d 家。</string>
+    <string name="agent_rule_based_empty">没有符合当前筛选条件的店铺。</string>
+    <string name="agent_cancelled">已取消</string>
+
+    <!-- Import -->
+    <string name="import_title">导入</string>
+    <string name="import_howto_title">怎么用</string>
+    <string name="import_howto_body">1. 在美团外卖或饿了么里打开店铺列表（或某家店的页面），截一张或几张图。\n2. 在下面选择截图，也可以直接粘贴店铺文字。\n3. 点「识别」，核对结果后「加入候选池」。\n也可以在美团外卖或饿了么里把内容「分享」给口碑雷达，它会自动带到这里。</string>
+    <string name="import_privacy">截图和文字会发送给你选择的 AI 服务商（%1$s）进行识别，请避免包含个人隐私信息。识别结果只保存在本机。</string>
+    <string name="import_not_configured">还没有配置 AI 服务。识别需要 API Key，请先到设置中填写。</string>
+    <string name="import_vision_missing">当前使用 OpenAI 兼容接口，但没有填写「识图模型」。如果聊天模型不支持图片，识别截图会失败。</string>
+    <string name="import_pick_images">选择截图（最多 %1$d 张）</string>
+    <string name="import_images_selected">已选 %1$d / %2$d 张</string>
+    <string name="import_images_capped">最多选择 %1$d 张，多出的已忽略。</string>
+    <string name="import_text_label">或粘贴店铺文字</string>
+    <string name="import_text_counter">%1$d / %2$d</string>
+    <string name="import_action_recognize">识别</string>
+    <string name="import_extracting">正在识别…</string>
+    <string name="import_preview_title">识别到 %1$d 家店铺</string>
+    <string name="import_preview_empty">没有识别到店铺。换一张更清晰的截图，或直接粘贴店铺文字再试。</string>
+    <string name="import_notes_title">说明</string>
+    <string name="import_action_merge">加入候选池</string>
+    <string name="import_action_back">返回修改</string>
+    <string name="import_msg_merged">已加入 %1$d 家店铺到候选池</string>
+    <string name="import_error_no_images">所选图片都无法读取，请重新选择。</string>
+    <string name="import_error_unexpected">识别时出错了，请稍后重试。</string>
+    <string name="import_notice_too_large">有 %1$d 张图片超过 12 MB 或像素过大，已跳过。</string>
+    <string name="import_notice_unreadable">有 %1$d 张图片无法读取（授权可能已失效），已跳过。</string>
+
+    <!-- Detail -->
+    <string name="detail_title">店铺详情</string>
+    <string name="detail_loading">正在加载…</string>
+    <string name="detail_not_found_title">找不到这家店</string>
+    <string name="detail_not_found_body">它可能已不在候选池中（例如应用重新启动后）。请返回重新查找。</string>
+    <string name="detail_section_breakdown">口碑分项</string>
+    <string name="detail_section_why">为什么是这个分数</string>
+    <string name="detail_section_info">基本信息</string>
+    <string name="detail_section_reviews">用户评价（用户生成内容）</string>
+    <string name="detail_score_rating">评分</string>
+    <string name="detail_score_confidence">可信度</string>
+    <string name="detail_score_sentiment">评价口碑</string>
+    <string name="detail_score_value">性价比</string>
+    <string name="detail_score_convenience">便利度</string>
+    <string name="detail_score_penalty">扣分</string>
+    <string name="detail_breakdown_empty">数据不足，没有可显示的分项。</string>
+    <string name="detail_adjusted_rating">修正后评分 %1$s</string>
+    <string name="detail_adjusted_rating_count">修正后评分 %1$s（依据 %2$d 条评价）</string>
+    <string name="detail_adjusted_rating_estimated">修正后评分 %1$s（评价数按 %2$d 估算）</string>
+    <string name="detail_info_category">类别</string>
+    <string name="detail_info_delivery_fee">配送费</string>
+    <string name="detail_info_min_order">起送价</string>
+    <string name="detail_info_open">营业状态</string>
+    <string name="detail_info_address">地址</string>
+    <string name="detail_info_phone">电话</string>
+    <string name="detail_unknown">未知</string>
+    <string name="detail_open_yes">营业中</string>
+    <string name="detail_open_no">休息中</string>
+    <string name="detail_action_call">拨打</string>
+    <string name="detail_reviews_note">以下是他人发表的评价原文，未经核实，仅供参考。</string>
+    <string name="detail_reviews_more">共 %1$d 条评价，仅显示前 %2$d 条。</string>
+    <string name="detail_review_rating">评分 %1$s</string>
+
+    <!-- Settings -->
+    <string name="settings_title">设置</string>
+    <string name="settings_section_data">数据源</string>
+    <string name="settings_section_ai">AI 服务（智能体与导入）</string>
+    <string name="settings_section_preferences">推荐偏好</string>
+    <string name="settings_section_manage">数据管理</string>
+    <string name="settings_section_about">关于与隐私</string>
+    <string name="settings_amap_key">高德 Web 服务 Key</string>
+    <string name="settings_use_demo">使用演示数据</string>
+    <string name="settings_use_demo_summary">强制使用离线演示数据，不访问高德</string>
+    <string name="settings_amap_hint">没有 Key？到高德开放平台创建「Web服务」类型的 Key。填写后，推荐页会自动改用真实数据。</string>
+    <string name="settings_provider">服务商</string>
+    <string name="settings_claude_model">Claude 模型</string>
+    <string name="settings_claude_effort">推理强度（可选）</string>
+    <string name="settings_effort_default">模型默认</string>
+    <string name="settings_claude_base_url">网关地址（可选）</string>
+    <string name="settings_claude_base_url_default">官方地址</string>
+    <string name="settings_api_key">API Key</string>
+    <string name="settings_openai_preset">预设</string>
+    <string name="settings_preset_custom">自定义</string>
+    <string name="settings_openai_base_url">接口地址</string>
+    <string name="settings_openai_model">模型</string>
+    <string name="settings_openai_vision_model">识图模型（可选）</string>
+    <string name="settings_not_set">未设置</string>
+    <string name="settings_key_not_set">未设置</string>
+    <string name="settings_key_saved">已保存</string>
+    <string name="settings_key_saved_tail">已保存（尾号 %1$s）</string>
+    <string name="settings_hint_key">密钥经系统密钥库加密后只保存在本机。</string>
+    <string name="settings_hint_claude_model" tools:ignore="TypographyDashes">默认 claude-opus-5-5，也可以换成更便宜的 claude-sonnet-5-5 等。</string>
+    <string name="settings_hint_claude_base_url">仅在使用代理或网关时填写，必须是 https 地址；留空则使用官方地址。</string>
+    <string name="settings_hint_openai_base_url">例如 https://api.deepseek.com/v1（不含 /chat/completions，必须是 https）。</string>
+    <string name="settings_hint_openai_model">用于对话和工具调用的模型名称。</string>
+    <string name="settings_hint_vision_model">聊天模型不支持图片时，识别截图所用的模型。</string>
+    <string name="settings_show">显示</string>
+    <string name="settings_hide">隐藏</string>
+    <string name="settings_clear_saved_key">清除已保存的密钥</string>
+    <string name="settings_scoring_preset">评分偏好</string>
+    <string name="settings_default_criteria">默认筛选条件</string>
+    <string name="settings_clear_imported">清除导入的店铺</string>
+    <string name="settings_clear_imported_summary">删除通过截图或文字导入的店铺</string>
+    <string name="settings_clear_imported_confirm">将删除所有导入的店铺（包括保存在本机的副本）。附近店铺不受影响。</string>
+    <string name="settings_clear_pool">清空候选池</string>
+    <string name="settings_clear_pool_summary">清空附近店铺和导入的店铺</string>
+    <string name="settings_clear_pool_confirm">将清空候选池（附近店铺和导入的店铺，包括保存在本机的副本）。附近店铺可在推荐页重新加载。</string>
+    <string name="settings_clear_keys">清除所有密钥</string>
+    <string name="settings_clear_keys_summary">删除已保存的高德 Key 和各 AI 服务的 API Key</string>
+    <string name="settings_clear_keys_confirm">将删除本机保存的全部密钥，之后需要重新填写。</string>
+    <string name="settings_about_body">口碑雷达根据评分、评价数和评价内容估算一家店的口碑，帮你少踩雷。综合分是启发式估算，仅供参考，不构成对商家的事实判断。应用只给出建议，不会代你下单或支付。</string>
+    <string name="settings_privacy_title">哪些数据会离开你的设备</string>
+    <string name="settings_privacy_amap">高德地图：使用真实数据时，你的位置坐标（或你输入的地址）会发给高德，用于检索附近店铺。</string>
+    <string name="settings_privacy_llm">AI 服务商：你向智能体输入的需求、候选店铺的公开信息（评分、距离等），以及你主动选择或分享的截图和文字，会发给你选择的服务商。你的位置不会发给 AI 服务商。</string>
+    <string name="settings_privacy_local">只保存在本机：API Key 经系统密钥库加密保存；你导入的店铺（可能含有你截取的评价文字）只存放在本机的应用私有目录，不会上传，也不会备份到云端；应用不含统计或广告组件。</string>
+    <string name="settings_version">版本 %1$s</string>
+    <string name="settings_msg_saved">已保存</string>
+    <string name="settings_msg_cleared">已清除</string>
+    <string name="settings_msg_secure_storage_failed">无法安全保存密钥：这台设备的密钥库不可用。</string>
+    <string name="settings_msg_imported_cleared">已清除导入的店铺</string>
+    <string name="settings_msg_pool_cleared">已清空候选池</string>
+    <string name="settings_msg_keys_cleared">已清除所有已保存的密钥</string>
+
+    <!-- Input problems -->
+    <string name="problem_empty">不能为空</string>
+    <string name="problem_too_long">内容太长</string>
+    <string name="problem_whitespace">不能包含空格或换行</string>
+    <string name="problem_not_ascii">只能包含英文字母、数字和符号（可能粘贴了全角字符）</string>
+    <string name="problem_not_https">只支持 https 地址</string>
+    <string name="problem_invalid_url">地址格式不正确</string>
+    <string name="problem_url_credentials">地址中不能包含账号或密码</string>
+</resources>
