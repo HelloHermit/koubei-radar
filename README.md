@@ -27,6 +27,12 @@
 |---|---|---|---|
 | ![导入](docs/screenshots/import.png) | ![详情](docs/screenshots/detail.png) | ![设置](docs/screenshots/settings.png) | ![每日推荐](docs/screenshots/settings-meals.png) |
 
+| 空状态（吉祥物） | 智能体欢迎页 |
+|---|---|
+| ![空状态](docs/screenshots/home-empty-pool.png) | ![欢迎页](docs/screenshots/agent.png) |
+
+吉祥物「外卖小鲸」（顶着热外卖盒的小鲸，空状态 / 出错 / 加载处使用）和店铺评分里的小鲸图标、应用图标，都是为本项目自绘的矢量图（`Mascot.kt`、`WhaleRating.kt`），不含任何第三方角色素材；只借用了深海蓝配色与"圆角、深蓝描边"的造型规则。
+
 ## 为什么这样设计
 
 GitHub 上现有的美团/点评爬虫依赖逆向与反反爬、作者自述"仅限学习、禁止商用"，且随时失效；平台也没有面向个人的店铺评分接口。

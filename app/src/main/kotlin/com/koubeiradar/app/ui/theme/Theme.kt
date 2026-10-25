@@ -61,6 +61,27 @@ private val DarkColors = darkColorScheme(
     surfaceContainerHighest = Color(0xFF1E3B5E),
 )
 
+/**
+ * The brand colour ramp (the "色阶" table in CLAUDE.md), for artwork that is not themed through Material roles, such as the
+ * mascot. UI that follows the light/dark theme uses [MaterialTheme.colorScheme] and [koubeiColors] instead.
+ */
+internal object BrandRamp {
+    val ink900 = Color(0xFF062251)
+    val line900 = Color(0xFF1C2A4A)
+    val blue800 = Color(0xFF0E3D7A)
+    val blue700 = Color(0xFF14305E)
+    val blue600 = Color(0xFF2676ED)
+    val blue500 = Color(0xFF0D9EF0)
+    val cyan400 = Color(0xFF5CA0C4)
+    val cyan300 = Color(0xFF65CBF1)
+    val cyan100 = Color(0xFFA4E9F5)
+    val gold300 = Color(0xFFEBD69E)
+    val gold500 = Color(0xFFC9A961)
+    val blush200 = Color(0xFFF5C8C3)
+    val violet700 = Color(0xFF363F6A)
+    val white = Color(0xFFFFFFFF)
+}
+
 /** Semantic colours Material 3 has no roles for: "good" (muted ink green) and "caution" (warm gold). They stay fixed when dynamic colour is on. */
 @Immutable
 class KoubeiColors(
@@ -77,13 +98,13 @@ class KoubeiColors(
 private val LightKoubeiColors = KoubeiColors(
     success = Color(0xFF2E7D46), successContainer = Color(0xFFC3EFCD), onSuccessContainer = Color(0xFF00210B),
     warning = Color(0xFF8A6A20), warningContainer = Color(0xFFF7E8C4), onWarningContainer = Color(0xFF3A2A00),
-    ratingFill = Color(0xFFC9A961),
+    ratingFill = BrandRamp.gold500,
 )
 
 private val DarkKoubeiColors = KoubeiColors(
     success = Color(0xFF9CD9AE), successContainer = Color(0xFF14532B), onSuccessContainer = Color(0xFFC3EFCD),
     warning = Color(0xFFEBD69E), warningContainer = Color(0xFF5A4410), onWarningContainer = Color(0xFFF7E8C4),
-    ratingFill = Color(0xFFEBD69E),
+    ratingFill = BrandRamp.gold300,
 )
 
 private val LocalKoubeiColors = staticCompositionLocalOf { LightKoubeiColors }

@@ -4,7 +4,20 @@
     android:height="24dp"
     android:viewportWidth="24"
     android:viewportHeight="24">
-    <path
-        android:fillColor="#FFFFFFFF"
-        android:pathData="M12,2 L15,9 L22.5,9.7 L16.8,14.6 L18.6,22 L12,18 L5.4,22 L7.2,14.6 L1.5,9.7 L9,9 Z" />
+    <!-- A notification icon is an alpha mask: the whale of the rating row, centred vertically (24 x 16.8 units). -->
+    <group android:translateY="3.6">
+        <path
+            android:fillColor="#FFFFFFFF"
+            android:pathData="M15.43 10.89C15.43 13.71 12.2 16 8.21 16C4.23 16 1 13.71 1 10.89C1 8.06 4.23 5.77 8.21 5.77C12.2 5.77 15.43 8.06 15.43 10.89ZM12.58 8.03C16.27 8.2 17.95 6.52 17.95 3.5C18.56 3.62 19.18 3.73 19.79 3.84C19.96 8.03 17.95 12.4 13.42 13.91ZM19.53 4.38C19.12 4.97 17.74 4.72 16.45 3.81C15.16 2.91 14.44 1.7 14.86 1.11C15.27 0.52 16.65 0.78 17.94 1.68C19.23 2.59 19.94 3.8 19.53 4.38ZM22.88 1.11C23.3 1.7 22.58 2.91 21.29 3.81C20 4.72 18.62 4.97 18.21 4.38C17.8 3.8 18.51 2.59 19.8 1.68C21.09 0.78 22.47 0.52 22.88 1.11ZM5.24 9.71C5.24 9.23 4.84 8.83 4.36 8.83C3.87 8.83 3.47 9.23 3.47 9.71C3.47 10.2 3.87 10.59 4.36 10.59C4.84 10.59 5.24 10.2 5.24 9.71Z" />
+        <path
+            android:strokeColor="#FFFFFFFF"
+            android:strokeWidth="1.35"
+            android:strokeLineCap="round"
+            android:pathData="M5.53 6.19C5.53 3.84 4.36 2.66 2.68 2.16" />
+        <path
+            android:strokeColor="#FFFFFFFF"
+            android:strokeWidth="1.35"
+            android:strokeLineCap="round"
+            android:pathData="M5.53 6.19C5.53 3.84 6.7 2.66 8.38 2.16" />
+    </group>
 </vector>
