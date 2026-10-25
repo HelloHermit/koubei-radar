@@ -46,6 +46,7 @@ GitHub 上现有的美团/点评爬虫依赖逆向与反反爬、作者自述"�
 export ANDROID_HOME=/path/to/android-sdk     # 或在 local.properties 里写 sdk.dir=...
 ./gradlew test                                # 全部测试（含 Robolectric 冒烟测试，数分钟）
 ./gradlew assembleDebug                       # 产物：app/build/outputs/apk/debug/app-debug.apk
+./gradlew :app:assembleRelease                # 产物：app/build/outputs/apk/release/app-release-unsigned.apk（R8 已开启，未签名）
 ```
 
 `dist/` 里放了一个现成的 **debug** APK（未签名发布、未混淆，约 30 MB），可直接侧载体验演示模式；见上文，它没有在真机上跑过。
@@ -84,7 +85,8 @@ export ANDROID_HOME=/path/to/android-sdk     # 或在 local.properties 里写 sd
 - **真机/模拟器运行**：沙箱没有 KVM，没有跑过真实设备。Robolectric 不等于真机（动态取色、软键盘/窗口边距、真实 AndroidKeyStore、`LocationManager` 的真实定位都没覆盖）。
 - **真实高德接口**：只用 MockWebServer 验证了解析与错误映射；字段名来自官方文档，没有用真实 Key 调用过。
 - **真实百度接口**：同样只有 MockWebServer。端点（官方「地点检索 3.0」`/place/v3/around`）、请求参数、返回字段（含 `comment_num`）、状态码表、地理编码都对照过 lbsyun.baidu.com 的官方页面；官方页没有示例响应，评分字段是否嵌套在 `detail_info` 里按两种形状都解析，`type` 关键字筛选与 `sort_name:distance` 的实际效果没有用真实 AK 验证；真实 AK 的 IP 白名单 / SN 校验行为、配额也没有验证。逐项的核实状态见 [DESIGN.md §3.4](docs/DESIGN.md)。
-- **真实 LLM 接口**：Claude（官方 Java SDK 3.2.0）与 OpenAI 兼容（DeepSeek/通义/智谱/Kimi）都只在 MockWebServer 上验证了请求/响应形状（Claude 的流式响应、流中途出错，以及取消后连接是否断开，用的是 MockWebServer 和原始 socket 服务器）；各家模型名、`max_tokens` 上限、识图能力以实际为准。Anthropic SDK（Jackson 反射）在 Android 上的运行也没有实测，开启 R8 之前需要补 keep 规则。
+- **真实 LLM 接口**：Claude（官方 Java SDK 3.2.0）与 OpenAI 兼容（DeepSeek/通义/智谱/Kimi）都只在 MockWebServer 上验证了请求/响应形状（Claude 的流式响应、流中途出错，以及取消后连接是否断开，用的是 MockWebServer 和原始 socket 服务器）；各家模型名、`max_tokens` 上限、识图能力以实际为准。Anthropic SDK（Jackson 反射）在 Android 上的运行也没有实测（release 构建已开启 R8，见下一条）。
+- **Release 构建 / R8**：release 已开启 R8 压缩 + 资源压缩（`app/proguard-rules.pro`；规则依据 R8 输出和各依赖自带的消费规则写成，见 [DESIGN.md §7.2](docs/DESIGN.md)）。`./gradlew :app:assembleRelease` 能构建，并从 `mapping.txt` / `seeds.txt` / dex 确认 Anthropic SDK 类、`AnthropicLlmClient`、`@Serializable` 序列化器、`MealWorker` 构造函数都还在；但产物 `app-release-unsigned.apk` **没有签名**（仓库里没有 keystore，请自行签名后再安装），也**没有在任何设备或模拟器上运行过**，所以混淆后 Jackson 反射、kotlinx.serialization、WorkManager 在运行时是否正常**未验证**；若出现运行时崩溃，先查 keep 规则。
 - **每日推荐通知**：定时、通知显示、Doze 下的实际延迟、Android 13+ 权限弹窗都只在 JVM 上（Robolectric + WorkManager 测试驱动）验证过，没有在真机上看到过真实通知；时区变化要到下次打开 App 才会修正推荐时间。
 - **拉起外卖 App**：包名（`com.sankuai.meituan.takeoutnew`、`com.sankuai.meituan`、`me.ele`）来自常识，未在真机核对；采用"复制店名 + 按包名启动"，不依赖私有 deeplink。
 - **CI**：`.github/workflows/ci.yml` 已写好但没有在 GitHub 上跑过。
