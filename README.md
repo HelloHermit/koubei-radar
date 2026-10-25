@@ -100,6 +100,13 @@ export ANDROID_HOME=/path/to/android-sdk     # 或在 local.properties 里写 sd
 - **CI**：`.github/workflows/ci.yml` 已写好但没有在 GitHub 上跑过。
 - **口碑评分的"准确度"**：这是工程启发式，没有用平台真实标注数据校准；`ScoringConfig` 暴露了全部参数。
 
+## 许可
+
+本项目代码以 [MIT 许可证](LICENSE) 发布（版权人 HelloHermit）；想换成别的许可证，替换 `LICENSE` 即可。
+
+- 许可证只覆盖本仓库自己的代码和自绘的矢量图（吉祥物、小鲸图标）。仓库和 APK 里**没有**任何社区角色素材（那批素材是 CC BY-NC-SA 4.0，禁止商用，只借用了配色与造型规则）。
+- 依赖的第三方库各自保留自己的许可证（主要是 Apache-2.0 和 MIT）。对外发布 APK 前，应在应用里提供这些库的许可证声明（Apache-2.0 要求保留许可证与 NOTICE）；**目前应用里没有这个页面**。
+
 ## 目录
 
 ```
