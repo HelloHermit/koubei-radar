@@ -49,3 +49,13 @@ interface Geocoder {
     @Throws(ShopSourceException::class)
     suspend fun geocode(address: String, city: String? = null): GeoPoint?
 }
+
+/**
+ * GCJ-02 position -> a short human readable place such as "朝阳区望京街道 · 望京SOHO附近", shown instead of "当前位置".
+ * Same error contract as [Geocoder]. Implementations are safe to call from any coroutine dispatcher.
+ */
+interface ReverseGeocoder {
+    /** A label of at most ~30 characters, or `null` when the provider knows nothing useful. Throws [ShopSourceException] on failures. */
+    @Throws(ShopSourceException::class)
+    suspend fun reverseGeocode(point: GeoPoint): String?
+}

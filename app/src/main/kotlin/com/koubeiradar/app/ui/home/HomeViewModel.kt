@@ -24,6 +24,7 @@ import com.koubeiradar.app.ui.addressNeedsKeyRes
 import com.koubeiradar.app.ui.criteria.relaxed
 import com.koubeiradar.app.ui.messageRes
 import com.koubeiradar.core.model.Criteria
+import com.koubeiradar.core.model.GeoPoint
 import com.koubeiradar.core.model.ScoredShop
 import com.koubeiradar.data.NearbyQuery
 import com.koubeiradar.data.ShopSourceException
@@ -74,6 +75,7 @@ class HomeViewModel(
     private var loadJob: Job? = null
     private var locateJob: Job? = null
     private var geocodeJob: Job? = null
+    private var addressJob: Job? = null
 
     val events: Flow<HomeEvent> = eventChannel.receiveAsFlow()
 
@@ -201,6 +203,7 @@ class HomeViewModel(
                 if (point == null) {
                     addressDialog.value = AddressDialogState(error = UiText(R.string.home_address_not_found))
                 } else {
+                    addressJob?.cancel()
                     places.set(PlaceState.Manual(address, point))
                     addressDialog.value = null
                     saveSettings { it.copy(savedPlace = SavedPlace(address, point)) }
@@ -243,6 +246,7 @@ class HomeViewModel(
                 is LocationResult.Found -> {
                     places.set(PlaceState.Device(result.point, result.accuracyMeters))
                     rememberPlace(SavedPlace(address = "", point = result.point, fromDevice = true))
+                    resolveAddress(result.point)
                     return true
                 }
 
@@ -259,6 +263,34 @@ class HomeViewModel(
             return false
         } finally {
             locatingCount.update { it - 1 }
+        }
+    }
+
+    /**
+     * Looks up a readable address for a device [point] in the background, so the fix itself never waits for it. A newer fix or a
+     * typed address cancels the lookup; a failure, a missing provider (demo data) or "nothing found" silently keeps "当前位置".
+     * The label goes into the shown place and, as `address` of the remembered `fromDevice` place, into the settings.
+     */
+    private fun resolveAddress(point: GeoPoint) {
+        addressJob?.cancel()
+        addressJob = viewModelScope.launch {
+            val answer = try {
+                val current = settingsState.filterNotNull().first()
+                dataSources.reverseGeocoderFor(current)?.reverseGeocode(point)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                null
+            }
+            val label = answer?.trim()?.takeIf { it.isNotEmpty() } ?: return@launch
+
+            val shown = places.place.value
+            if (shown !is PlaceState.Device || shown.point != point) return@launch
+            places.set(shown.copy(label = label))
+            settings.tryUpdate { current ->
+                val saved = current.savedPlace
+                if (saved != null && saved.fromDevice && saved.point == point) current.copy(savedPlace = saved.copy(address = label)) else current
+            }
         }
     }
 

@@ -91,7 +91,7 @@ internal fun MealSection(
         Text(
             when {
                 place == null -> stringResource(R.string.settings_meals_place_none)
-                place.fromDevice -> stringResource(R.string.settings_meals_place_device)
+                place.fromDevice && place.address.isBlank() -> stringResource(R.string.settings_meals_place_device)
                 else -> stringResource(R.string.settings_meals_place_address, place.address)
             },
             style = MaterialTheme.typography.bodySmall,

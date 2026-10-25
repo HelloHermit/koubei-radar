@@ -309,7 +309,7 @@ private fun PlaceRow(state: HomeUiState, onEditPlace: () -> Unit, onOpenSettings
     val place = state.place
     val title = when {
         state.locating -> stringResource(R.string.home_location_locating)
-        place is PlaceState.Device -> stringResource(R.string.home_location_device)
+        place is PlaceState.Device -> place.label ?: stringResource(R.string.home_location_device)
         place is PlaceState.Manual -> place.address
         else -> stringResource(R.string.home_location_unknown)
     }

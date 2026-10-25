@@ -10,7 +10,8 @@ import kotlinx.coroutines.flow.asStateFlow
 sealed interface PlaceState {
     data object Unknown : PlaceState
 
-    data class Device(val point: GeoPoint, val accuracyMeters: Int?) : PlaceState
+    /** A position from the device; [label] is its reverse-geocoded address once (and if) that has been resolved. */
+    data class Device(val point: GeoPoint, val accuracyMeters: Int?, val label: String? = null) : PlaceState
 
     /** An address the user typed, resolved to [point]. */
     data class Manual(val address: String, val point: GeoPoint) : PlaceState

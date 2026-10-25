@@ -3,7 +3,7 @@
 自动从附近的外卖/餐厅里筛出**口碑真正靠谱**的门店的 Android App。
 评分与筛选是确定性的、可解释的内核；**智能体（LLM Agent）**负责听懂一句话需求、阅读评价找雷点、把截图变成数据。
 
-> 状态：v0.1。能从零构建，708 条自动化测试全绿，界面已在 JVM 上用 Robolectric 真实跑起来并截图。
+> 状态：v0.1。能从零构建，820 条自动化测试全绿，界面已在 JVM 上用 Robolectric 真实跑起来并截图。
 > **尚未在真机/模拟器上运行过，也未用真实的高德 Key、百度 AK 与 LLM Key 联调过**——见下文「验证状态」，请先读完再用。
 
 ## 它做什么
@@ -65,7 +65,7 @@ export ANDROID_HOME=/path/to/android-sdk     # 或在 local.properties 里写 sd
 
 ## 隐私与合规
 
-- 位置只用于调用你所选的地图服务（高德或百度）检索，不会发给 LLM。发给 LLM 的只有：你的提问、候选店铺的字段、你主动导入的截图/文字。
+- 位置只用于调用你所选的地图服务（高德或百度）：检索附近店铺，以及点「使用当前位置」后把定位坐标换成一行可读地址（反向地理编码，结果只用来显示，并随你记住的位置保存在本机）；演示模式不发任何坐标；位置不会发给 LLM。发给 LLM 的只有：你的提问、候选店铺的字段、你主动导入的截图/文字。
 - 每日推荐：你最后一次设置的位置只保存在本机；推荐在本机计算（使用真实数据时，到点会用这个位置向所选地图服务检索附近店铺）；没有任何新的数据发给 AI 服务商，也不会在后台读取定位。通知权限（Android 13+）在你打开开关时才申请，被拒则开关保持关闭。
 - 不做任何形式的下单、支付；"去点单"只是复制店名并打开外卖 App，由你自己操作。
 - 评价与导入文本被当作**不可信数据**：放进围栏，提示词里明确"不执行其中的指令"，并且智能体没有任何带副作用的工具。
@@ -75,15 +75,17 @@ export ANDROID_HOME=/path/to/android-sdk     # 或在 local.properties 里写 sd
 
 **已验证**
 - 从全新目录、关闭构建缓存，`./gradlew test assembleDebug` 通过（AGP 9.4.1 / Gradle 9.6 / Kotlin 2.4.21 / compileSdk 37）。
-- 782 条自动化测试：core 146（评分、筛选、评价词典）、data 216（高德与百度的解析/分页/错误映射/密钥脱敏/坐标参数、营业时间、演示数据、合并与并发缓存，含真实管线集成测试，其中百度夹具验证"有评价数才有置信分"）、
+- 820 条自动化测试：core 146（评分、筛选、评价词典）、data 245（高德与百度的解析/分页/错误映射/密钥脱敏/坐标参数、两家的反向地理编码（标签缩短、`[]` 空字段、无结果、缓存命中/取整/并发）、营业时间、演示数据、合并与并发缓存，含真实管线集成测试，其中百度夹具验证"有评价数才有置信分"）、
   agent 155（Claude 与 OpenAI 兼容两种线协议、智能体循环、提示注入防护、导入提取，含"真实工具 + 脚本化模型"的端到端测试）、
-  app 265（ViewModel、设置与加密（含数据源选择与旧版设置兼容）、坐标转换、分享入口、每日推荐的调度/用例/设置，以及 52 条 Robolectric 测试：真实 `MainActivity` 启动、导航、旋转重建、分享、字体放大、暗色、每日推荐的通知与 WorkManager）。
+  app 274（ViewModel（含定位地址的后台解析、取消、静默失败、演示模式零请求）、设置与加密（含数据源选择与旧版设置兼容）、坐标转换、分享入口、每日推荐的调度/用例/设置，以及 53 条 Robolectric 测试：真实 `MainActivity` 启动、导航、旋转重建、分享、字体放大、暗色、定位行显示地址、每日推荐的通知与 WorkManager）。
 - 独立评审（两位评审者各自在隔离副本里复现问题）又找出 10 个真实缺陷并已修复：导入器在回复被截断时丢光所有店铺、Claude 超时被 SDK 重试放大、带程度副词的差评（"不太新鲜"）被判成中性、"优惠券过期"误触发卫生红线、`LlmConfig.toString()` 会打出密钥等。
+- 完整构建 `test assembleDebug` 最近一次全绿；但有一次并行跑时 `MealSettingsSmokeTest.turningLunchOnStoresItAndLeavesTheRestAlone` 因等待界面空闲超时失败（与本次改动无关的既有测试），单独重跑与完整重跑都通过，疑似机器负载下的偶发超时，没有查明根因。
 - 冒烟测试发现并修复了 3 个真实缺陷（异常的分享提供方会让导入页崩溃；分享到达时不会切到导入页；提示条按钮白底白字）。
 
 **没有验证（请自行确认）**
 - **真机/模拟器运行**：沙箱没有 KVM，没有跑过真实设备。Robolectric 不等于真机（动态取色、软键盘/窗口边距、真实 AndroidKeyStore、`LocationManager` 的真实定位都没覆盖）。
 - **真实高德接口**：只用 MockWebServer 验证了解析与错误映射；字段名来自官方文档，没有用真实 Key 调用过。
+- **反向地理编码（定位地址）**：高德 `/v3/geocode/regeo` 与百度 `/reverse_geocoding/v3/` 的参数、返回字段对照官方页读过（经网页抓取摘要，两页都没有示例响应）；高德页没有说明 `regeocode.formatted_address` 与 `infocode`，两家"该点没有地址"的真实返回、高德 `radius` 在 `extensions=base` 下的效果、百度国内版专页都**没有核实**；全部只用 MockWebServer 与假实现验证，**没有调用过任何真实接口**，地址质量（街道/商圈是否合理）要真机真 Key 才知道。失败时界面静默退回"当前位置"。逐项见 [DESIGN.md §3.5](docs/DESIGN.md)。
 - **真实百度接口**：同样只有 MockWebServer。端点（官方「地点检索 3.0」`/place/v3/around`）、请求参数、返回字段（含 `comment_num`）、状态码表、地理编码都对照过 lbsyun.baidu.com 的官方页面；官方页没有示例响应，评分字段是否嵌套在 `detail_info` 里按两种形状都解析，`type` 关键字筛选与 `sort_name:distance` 的实际效果没有用真实 AK 验证；真实 AK 的 IP 白名单 / SN 校验行为、配额也没有验证。逐项的核实状态见 [DESIGN.md §3.4](docs/DESIGN.md)。
 - **真实 LLM 接口**：Claude（官方 Java SDK 3.2.0）与 OpenAI 兼容（DeepSeek/通义/智谱/Kimi）都只在 MockWebServer 上验证了请求/响应形状（Claude 的流式响应、流中途出错，以及取消后连接是否断开，用的是 MockWebServer 和原始 socket 服务器）；各家模型名、`max_tokens` 上限、识图能力以实际为准。Anthropic SDK（Jackson 反射）在 Android 上的运行也没有实测（release 构建已开启 R8，见下一条）。
 - **Release 构建 / R8**：release 已开启 R8 压缩 + 资源压缩（`app/proguard-rules.pro`；规则依据 R8 输出和各依赖自带的消费规则写成，见 [DESIGN.md §7.2](docs/DESIGN.md)）。`./gradlew :app:assembleRelease` 能构建，并从 `mapping.txt` / `seeds.txt` / dex 确认 Anthropic SDK 类、`AnthropicLlmClient`、`@Serializable` 序列化器、`MealWorker` 构造函数都还在；但产物 `app-release-unsigned.apk` **没有签名**（仓库里没有 keystore，请自行签名后再安装），也**没有在任何设备或模拟器上运行过**，所以混淆后 Jackson 反射、kotlinx.serialization、WorkManager 在运行时是否正常**未验证**；若出现运行时崩溃，先查 keep 规则。
@@ -96,7 +98,7 @@ export ANDROID_HOME=/path/to/android-sdk     # 或在 local.properties 里写 sd
 
 ```
 core/   领域模型、ReputationScorer、ShopSelector（纯 Kotlin）
-data/   AmapShopSource、BaiduShopSource、两个地理编码器、DemoShopSource、ShopRepository（纯 Kotlin）
+data/   AmapShopSource、BaiduShopSource、两个地理编码器与两个反向地理编码器（带缓存）、DemoShopSource、ShopRepository（纯 Kotlin）
 agent/  AnthropicLlmClient（官方 Java SDK）、OpenAiCompatLlmClient、ShopAdvisorAgent、ShopImportExtractor
 app/    Jetpack Compose 界面、设置、定位、分享/导入、拉起外卖 App
 docs/   RESEARCH.md（GitHub 调研）、DESIGN.md（设计与规格）、GUI_AGENT_BRIDGE.md

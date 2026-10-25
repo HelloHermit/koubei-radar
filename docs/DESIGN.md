@@ -158,6 +158,30 @@ UI 与智能体共享的内存池 = **附近店铺（来自 ShopSource）∪ 导
 
 解析一律容忍：数字可能是字符串、数字或 `""`，`detail_info` 可能缺失（此时只有名称、地址、位置，没有评分），字段也可能直接平铺在 POI 上。分页：`page_size=10`，从 `page_num=0` 起，直到空页、`total` 已取完（没有 `total` 时看短页）或凑够 `limit`，最多 15 页；按距离升序、取前 `limit`。AK 只出现在请求 URL 里，任何异常消息与 cause 都不含它（`***` 替换）。
 
+### 3.5 反向地理编码 `ReverseGeocoder`
+
+用途：用户点"使用当前位置"后，把设备的 GCJ-02 坐标换成一行可读地址（如"朝阳区望京街道 · 望京SOHO附近"），显示在推荐页的位置行与"每日推荐"设置里，取代一律显示的"当前位置"。接口与 `Geocoder` 同一套约定：`suspend fun reverseGeocode(point): String?`，失败抛 `ShopSourceException`（`Kind` 映射与正向地理编码完全相同，复用 `AmapApi` / `BaiduApi` 的状态码映射与密钥脱敏），没有有用结果返回 `null`。任何失败在界面上都**静默**退回"当前位置"。
+
+**核实情况**（2026-10-25；官方页是用网页抓取工具读到的，内容经小模型摘要，不是逐字原文，也没有任何一页给出示例响应）：
+
+| 项目 | 内容 | 状态 |
+|---|---|---|
+| 高德端点与参数 | `GET https://restapi.amap.com/v3/geocode/regeo`（官方页 `lbs.amap.com/api/webservice/guide/api/georegeo`）：`key`、`location`（`经度,纬度`，最多 6 位小数）、`radius`（0–3000，默认 1000）、`extensions`（`base` 默认 / `all`）、`output`（`JSON` 默认） | 官方文档核实 |
+| 高德返回字段 | `status`、`info`、`regeocode.addressComponent`：`province`、`city`（直辖市等为空）、`district`、`township`、`neighborhood{name,type}`、`building{name,type}`、`streetNumber{street,number,…}`；"当返回值不存在时，则以数组类型返回"（本实现对每个字段都容忍 `[]`、`""`、缺失） | 官方文档核实 |
+| `regeocode.formatted_address` | 该页**没有**说明这个字段，也没有 `infocode` 的说明；字段名与"省市前缀 + 区 + 街道 + 门牌"的形状来自常见用法 | **未核实** |
+| 高德 `radius` | 官方页只给了范围与默认值；`extensions=base` 时它是否生效，该页没说，本实现照例发 `200` | 参数核实，效果未核实 |
+| 百度端点与参数 | `GET https://api.map.baidu.com/reverse_geocoding/v3/`（官方页 `lbsyun.baidu.com/faq/api?title=webapi/guide/webservice-geocoding-abroad-base`，"全球逆地理编码"，页面写明 V3.0 为现行接口）：`ak`、`location`（`纬度,经度`）、`coordtype`（`bd09ll` 默认 / `bd09mc` / `gcj02ll` / `wgs84ll`）、`ret_coordtype`、`extensions_poi`（`0`/`1`）、`radius`（需 `extensions_poi=1`）、`output`（默认 `xml`） | 官方文档核实（只读到全球版页面；国内版专页没有找到） |
+| 百度返回字段 | `status`、`result.formatted_address`、`result.business`（"最多三个商圈"，逗号分隔）、`result.addressComponent{country,province,city,district,town,street,street_number,adcode,direction,distance}`；`sematic_description` 需要 `extensions_poi=1`，本实现关闭 POI，不用 | 官方文档核实 |
+| 无结果与错误 | 两家的"这个点没有地址"的真实返回都没有核实：高德按 `regeocode` 缺失/为 `[]`/各字段为空处理为 `null`；百度按 `result` 缺失/为空处理为 `null`，并沿用正向地理编码的社区报告（`status=1` 且文本含"无相关结果"→ `null`）。状态码/infocode 映射沿用 §3.1 / §3.4 | 未核实 |
+
+**标签规则**（两家共用 `shortAddressLabel`）：`区 + 街道` 作为区域，最近的建筑（高德 `building`）→ 小区（高德 `neighborhood`）→ 商圈第一个（百度 `business`）→ 路名 + 门牌作为提示；有区域和提示时 `区域 · 提示附近`，只有一个就只显示一个；两个都没有时用 `formatted_address` 去掉省、市前缀；最长 30 个字符，超出截成 29 个字符加 `…`；全空返回 `null`。异常消息与标签里都不含 Key / 原始 JSON。
+
+**缓存**：`CachingReverseGeocoder` 装饰器，按坐标四舍五入到 3 位小数（约 100 m）为键，LRU 默认 32 条，`synchronized` 保护；只缓存成功的非空答案；两个并发的相同未命中可能都会打到服务（不做去重）。`DefaultDataSources` 为当前"提供商 + Key"保留一个实例，所以下拉刷新、重新定位不会重复耗配额。
+
+**`:app` 里的流程**：`DataSources.reverseGeocoderFor(settings)` 与 `geocoderFor` 同一条件，演示模式或没有 Key 时为 `null`——**演示模式不发任何网络请求**。`HomeViewModel` 拿到定位后**立即**把 `PlaceState.Device(point, accuracy)` 放进状态并照常加载店铺，不等地址；然后在后台解析地址（新的定位、手动输入地址都会取消上一次解析），成功后 `PlaceState.Device.label` 更新，并把标签写进已记住的 `SavedPlace.address`（仍然 `fromDevice = true`，只在记住的位置还是同一个设备坐标时才写）。`SavedPlace` 的序列化格式没有变：旧版存下的 `address=""` 的设备位置照常读取，下次定位后补上标签。"设备位置不是用户输入的地址"（冷启动无权限时不恢复为 `Manual`）的判断看的是 `fromDevice`，不看 `address`，所以有了标签也不会被当成手动地址。每日推荐设置里：`fromDevice` 且地址为空显示"上一次的定位位置"，否则显示地址。
+
+**隐私**：坐标只发给当前选择的地图服务商（与检索相同），不发给 LLM；演示模式不发。
+
 ## 4. 口碑评分（`:core`）
 
 输入：候选集 `S`、筛选条件 `C`、配置 `K`（`ScoringConfig`）。以下全部为纯函数；数值均为默认值，测试以**性质**（单调性、边界）为主。
@@ -295,7 +319,7 @@ UI 与智能体共享的内存池 = **附近店铺（来自 ShopSource）∪ 导
 - 仅 HTTPS（`usesCleartextTraffic=false`）；
 - 权限：`INTERNET` + 位置（运行时申请，拒绝时走手动地址）+ `POST_NOTIFICATIONS`（Android 13+，打开每日推荐开关时才申请）；无后台定位、无精确闹钟权限；`<queries>` 声明三款外卖 App 包名；
 - 拉起外卖 App：复制店名到剪贴板 → 按包名 `getLaunchIntentForPackage`；未安装则提示。**不依赖私有 deeplink**。
-- 位置只用于所选地图服务（高德或百度）的检索（每日推荐在本机用上次的位置检索）；发给 LLM 的只有用户输入、候选店铺字段与用户主动提供的截图/文本。
+- 位置只用于所选地图服务（高德或百度）的检索与把定位坐标换成可读地址（反向地理编码，§3.5；每日推荐在本机用上次的位置检索）；发给 LLM 的只有用户输入、候选店铺字段与用户主动提供的截图/文本。
 
 ### 7.1 每日定时推荐通知
 
@@ -324,7 +348,7 @@ UI 与智能体共享的内存池 = **附近店铺（来自 ShopSource）∪ 导
 
 - **数据来源**：只用高德 / 百度的官方 API 与用户主动提供的内容。GitHub 上现有的美团/点评爬虫（见 RESEARCH.md）多为"仅限学习交流、禁止商用"，依赖逆向与反反爬，随时失效且违反平台条款，**不采用**。
 - **GUI 智能体自动化**（Open-AutoGLM、Mobilerun 等）：只作为可选的、用户自担风险的桥接方案；这些项目自身声明"仅供研究学习"，且平台可能限制自动化操作。支付/登录必须人工接管。
-- **隐私**：截图会上传给你选择的 LLM 提供商——导入页明示；不上传位置到 LLM。每日推荐只用本机保存的上次位置，在本机计算，不读后台定位（见 §7.1）。
+- **隐私**：截图会上传给你选择的 LLM 提供商——导入页明示；不上传位置到 LLM；定位坐标只发给所选地图服务商做反向地理编码（演示模式不发）。每日推荐只用本机保存的上次位置，在本机计算，不读后台定位（见 §7.1）。
 - **口碑不是真理**：分数是证据加权的启发式，不构成对商家的事实断言；UI 文案用"口碑优秀/建议避开"，并列出依据。
 - **成本**：Agent 一次请求约 3–6 次模型调用；Opus 5.5 质量最高，也可在设置里换更便宜的模型。
 
@@ -333,13 +357,13 @@ UI 与智能体共享的内存池 = **附近店铺（来自 ShopSource）∪ 导
 | 层 | 做法 | 数量 |
 |---|---|---|
 | `:core` | 评分的性质测试（单调性、边界、null 处理、红线词与否定词、满分少评、权重归一、预设）+ 筛选语义（Criteria 每个字段与 null 规则、并列排序、垃圾输入不出 NaN、确定性） | 146 |
-| `:data` | MockWebServer 覆盖高德正常 / `[]` 空字段 / 翻页上限 / 各 infocode / 超时 / 畸形 JSON / 取消，百度（字符串形式的数字、缺 `detail_info`、翻页、去重、状态码表、AK 脱敏含非 JSON 响应、超时、取消、实际发出的坐标参数）；营业时间（含跨午夜）；演示数据样本；仓库合并、缓存 TTL、并发；**集成：演示数据 → 候选池 → 真实 `ShopSelector`，样本结论与 §3.2 表一致；百度夹具 → 候选池 → 真实 `ShopSelector`，有评价数的店得到置信分、没有的（高德式）没有** | 216 |
+| `:data` | MockWebServer 覆盖高德正常 / `[]` 空字段 / 翻页上限 / 各 infocode / 超时 / 畸形 JSON / 取消，百度（字符串形式的数字、缺 `detail_info`、翻页、去重、状态码表、AK 脱敏含非 JSON 响应、超时、取消、实际发出的坐标参数）；两家反向地理编码（标签缩短与 30 字上限、高德 `[]` 空字段、无结果、各 status/infocode、Key 不进异常）与 `CachingReverseGeocoder`（命中/取整/LRU/不缓存失败/并发），营业时间（含跨午夜）；演示数据样本；仓库合并、缓存 TTL、并发；**集成：演示数据 → 候选池 → 真实 `ShopSelector`，样本结论与 §3.2 表一致；百度夹具 → 候选池 → 真实 `ShopSelector`，有评价数的店得到置信分、没有的（高德式）没有** | 245 |
 | `:agent` | 假 LLM 脚本化跑完整循环（并行工具、提醒一次、兜底、未知 shop_id 纠错、提示注入）；两个客户端用 MockWebServer 验证线协议（Claude 为 SSE 流：thinking 签名与分片入参重组、流中途 `error`、断流、取消即断开连接，以及 thinking 块回放、`is_error`、工具结果合并；OpenAI `arguments` 字符串）；**端到端：真实工具 + 真实候选池 + 真实打分器 + 脚本化模型** | 155 |
-| `:app` | ViewModel（假服务）、设置与加密（含数据源选择、百度 AK、旧版设置兼容）、数据源选择、坐标转换、分享入口与限额、持久化；**Robolectric 冒烟测试**：真实 `MainActivity`/`AppContainer` 启动到首帧、各标签与详情/设置导航、旋转重建、分享入口、无 Key 引导、权限被拒、1.5 倍字体、暗色，并产出截图；**每日推荐**：`nextTrigger` 边界（严格晚于、周末、跨月年、夏令时）、用例决定（无位置/无店/避雷/文案/重试）、设置持久化与旧版本兼容、WorkManager 请求与通知（Robolectric） | 265 |
+| `:app` | ViewModel（假服务；含定位地址：先显示定位、后台解析出标签并持久化、失败静默、演示模式零请求、新定位/手输地址取消旧解析、旧版空地址设备位置照常读取）、设置与加密（含数据源选择、百度 AK、旧版设置兼容）、数据源选择、坐标转换、分享入口与限额、持久化；**Robolectric 冒烟测试**：真实 `MainActivity`/`AppContainer` 启动到首帧、各标签与详情/设置导航、旋转重建、分享入口、无 Key 引导、权限被拒、1.5 倍字体、暗色，并产出截图；**每日推荐**：`nextTrigger` 边界（严格晚于、周末、跨月年、夏令时）、用例决定（无位置/无店/避雷/文案/重试）、设置持久化与旧版本兼容、WorkManager 请求与通知（Robolectric） | 274 |
 
-冒烟测试在 JVM 上跑，**不等于真机**：真实 AndroidKeyStore、软键盘/窗口边距、真实定位、动态取色都没有覆盖。它们发现并修复了 3 个真实缺陷（异常的分享提供方让导入页崩溃；分享到达时已存活的导入页不会切换标签；提示条按钮白底白字），评审中又加固了持久化写线程（任何异常都不会让它静默停止）；两位独立评审者另外复现并修复了 10 个缺陷（见 README），其回归测试在 `reviewer/`、`review/` 包下；其中 R1a/R1e 验证取消 Claude 调用会真的断开连接（响应头之前的限制见 §5.5）。
+冒烟测试在 JVM 上跑，**不等于真机**：真实 AndroidKeyStore、软键盘/窗口边距、真实定位、动态取色都没有覆盖（定位地址的冒烟测试用的是假的反向地理编码器，没有网络）。它们发现并修复了 3 个真实缺陷（异常的分享提供方让导入页崩溃；分享到达时已存活的导入页不会切换标签；提示条按钮白底白字），评审中又加固了持久化写线程（任何异常都不会让它静默停止）；两位独立评审者另外复现并修复了 10 个缺陷（见 README），其回归测试在 `reviewer/`、`review/` 包下；其中 R1a/R1e 验证取消 Claude 调用会真的断开连接（响应头之前的限制见 §5.5）。
 
-未验证：真实高德/百度/Claude/OpenAI 兼容接口（只有 MockWebServer；百度 3.0 圆形检索的评分字段嵌套形状（页面无示例）、`type` 作关键字筛选与 `sort_name:distance` 的实际效果、每页实际条数、地理编码无结果的返回、真实 AK 的 IP 白名单/SN 限制，见 §3.4）、Anthropic SDK 在 Android 上的运行、R8 规则在真机上的效果（§7.2，只检查过 R8 输出）、外卖 App 包名、评分对真实数据的校准。
+未验证：真实高德/百度/Claude/OpenAI 兼容接口（只有 MockWebServer；反向地理编码的 `formatted_address`、无结果的真实返回与地址质量，见 §3.5；百度 3.0 圆形检索的评分字段嵌套形状（页面无示例）、`type` 作关键字筛选与 `sort_name:distance` 的实际效果、每页实际条数、地理编码无结果的返回、真实 AK 的 IP 白名单/SN 限制，见 §3.4）、Anthropic SDK 在 Android 上的运行、R8 规则在真机上的效果（§7.2，只检查过 R8 输出）、外卖 App 包名、评分对真实数据的校准。
 
 ## 10. 路线图
 

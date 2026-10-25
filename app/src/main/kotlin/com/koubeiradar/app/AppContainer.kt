@@ -54,9 +54,14 @@ import javax.crypto.SecretKey
 /**
  * Manual dependency injection: one instance per process, created by [KoubeiApplication].
  * [secretKeyProvider] supplies the key that seals stored credentials; production always uses the AndroidKeyStore one,
- * only tests (where that provider does not exist) pass another.
+ * only tests (where that provider does not exist) pass another. [dataSourcesFactory] is likewise a test seam: production
+ * always builds [DefaultDataSources] around the shared HTTP client.
  */
-class AppContainer(context: Context, secretKeyProvider: () -> SecretKey = androidKeyStoreKeyProvider()) {
+class AppContainer(
+    context: Context,
+    dataSourcesFactory: (OkHttpClient) -> DataSources = { DefaultDataSources(it) },
+    secretKeyProvider: () -> SecretKey = androidKeyStoreKeyProvider(),
+) {
     private val appContext = context.applicationContext
     private val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
@@ -87,7 +92,7 @@ class AppContainer(context: Context, secretKeyProvider: () -> SecretKey = androi
     val shopStore: ShopStore = persistingStore
 
     val rankers: RankerProvider = CachingRankerProvider()
-    val dataSources: DataSources = DefaultDataSources(http)
+    val dataSources: DataSources = dataSourcesFactory(http)
     val places = PlaceStore()
     val shareInbox = ShareInbox()
     val clock: Clock = Clock.systemDefaultZone()

@@ -30,7 +30,9 @@ import com.koubeiradar.core.model.Verdict
 import com.koubeiradar.core.selection.ShopRanker
 import com.koubeiradar.data.Geocoder
 import com.koubeiradar.data.NearbyQuery
+import com.koubeiradar.data.ReverseGeocoder
 import com.koubeiradar.data.ShopSource
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -152,10 +154,32 @@ class FakeGeocoder(var result: GeoPoint? = null, var failure: Exception? = null)
     }
 }
 
-class FakeDataSources(var geocoder: FakeGeocoder? = null) : DataSources {
+/** Answers [labels] by position (anything else: [fallback]); with a [gate] every call waits for it, and cancellations are counted. */
+class FakeReverseGeocoder(var fallback: String? = null, var failure: Exception? = null) : ReverseGeocoder {
+    val labels = mutableMapOf<GeoPoint, String?>()
+    val requests = mutableListOf<GeoPoint>()
+    var gate: CompletableDeferred<Unit>? = null
+    var cancelled = 0
+
+    override suspend fun reverseGeocode(point: GeoPoint): String? {
+        requests += point
+        try {
+            gate?.await()
+        } catch (e: CancellationException) {
+            cancelled++
+            throw e
+        }
+        failure?.let { throw it }
+        return if (point in labels) labels[point] else fallback
+    }
+}
+
+class FakeDataSources(var geocoder: FakeGeocoder? = null, var reverseGeocoder: FakeReverseGeocoder? = null) : DataSources {
     override fun sourceFor(settings: AppSettings): ShopSource = FakeSource(settings.activePoi?.name?.lowercase() ?: "demo")
 
     override fun geocoderFor(settings: AppSettings): Geocoder? = geocoder.takeIf { settings.usesRealData }
+
+    override fun reverseGeocoderFor(settings: AppSettings): ReverseGeocoder? = reverseGeocoder.takeIf { settings.usesRealData }
 }
 
 class FakeLocation(var permission: Boolean = false, var result: LocationResult = LocationResult.Unavailable) : LocationService {
