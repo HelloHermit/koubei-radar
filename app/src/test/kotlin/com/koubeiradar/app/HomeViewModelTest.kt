@@ -450,6 +450,27 @@ class HomeViewModelTest {
     }
 
     @Test
+    fun `a quick answer is looked up only after the position is saved, so it still lands in the saved place`() = runTest {
+        settings.state.value = amap
+        location.permission = true
+        location.result = LocationResult.Found(somewhere, accuracyMeters = 25)
+        reverse.fallback = "望京街道" // answers at once, like an address that is already cached
+        settings.writeGate = CompletableDeferred()
+
+        val viewModel = viewModel()
+        advanceUntilIdle()
+
+        assertEquals(PlaceState.Device(somewhere, 25), viewModel.uiState.value.place)
+        assertTrue(reverse.requests.isEmpty(), "the lookup waits for the position to be saved")
+
+        settings.writeGate?.complete(Unit)
+        advanceUntilIdle()
+
+        assertEquals(PlaceState.Device(somewhere, 25, label = "望京街道"), viewModel.uiState.value.place)
+        assertEquals(SavedPlace("望京街道", somewhere, fromDevice = true), settings.current.savedPlace)
+    }
+
+    @Test
     fun `an old stored place without an address gets its label on the next fix`() = runTest {
         settings.state.value = amap.copy(savedPlace = SavedPlace("", somewhere, fromDevice = true))
         location.permission = true
