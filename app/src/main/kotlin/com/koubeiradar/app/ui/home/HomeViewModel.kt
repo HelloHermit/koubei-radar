@@ -219,7 +219,9 @@ class HomeViewModel(
         if (location.hasPermission()) {
             locateNow(userInitiated = false)
         } else {
-            settingsState.filterNotNull().first().savedPlace?.let { places.set(PlaceState.Manual(it.address, it.point)) }
+            // A remembered device position is only for the daily recommendation: it is not a place the user typed.
+            settingsState.filterNotNull().first().savedPlace?.takeUnless { it.fromDevice }
+                ?.let { places.set(PlaceState.Manual(it.address, it.point)) }
         }
     }
 
@@ -237,6 +239,7 @@ class HomeViewModel(
             when (val result = location.currentLocation()) {
                 is LocationResult.Found -> {
                     places.set(PlaceState.Device(result.point, result.accuracyMeters))
+                    rememberPlace(SavedPlace(address = "", point = result.point, fromDevice = true))
                     return true
                 }
 
@@ -281,6 +284,11 @@ class HomeViewModel(
             // The source is another module's code: whatever it throws becomes an error state, never a crash.
             LoadState.Failed(ShopSourceException.Kind.OTHER)
         }
+    }
+
+    /** The daily recommendation looks around the last place set here, without reading the location itself. A failed write only means it keeps the older place. */
+    private fun rememberPlace(place: SavedPlace) {
+        viewModelScope.launch { settings.tryUpdate { it.copy(savedPlace = place) } }
     }
 
     private suspend fun saveSettings(transform: (AppSettings) -> AppSettings): Boolean {

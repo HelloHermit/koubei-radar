@@ -2,6 +2,7 @@ package com.koubeiradar.app.ui.format
 
 import java.math.BigDecimal
 import java.math.RoundingMode
+import java.time.LocalTime
 import java.util.Locale
 import kotlin.math.roundToInt
 
@@ -31,6 +32,9 @@ object Formatters {
 
     /** Composite score as a whole number in 0..100. */
     fun score(score: Double): Int = score.roundToInt().coerceIn(0, 100)
+
+    /** 24-hour clock time, `07:05`. */
+    fun time(time: LocalTime): String = String.format(Locale.ROOT, "%02d:%02d", time.hour, time.minute)
 
     /** `3200` -> `3200`; plain digits are clearer than "3.2千" and always fit. */
     fun count(count: Int): String = count.toString()

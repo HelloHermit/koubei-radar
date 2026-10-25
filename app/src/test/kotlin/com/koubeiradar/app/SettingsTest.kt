@@ -1,6 +1,10 @@
 package com.koubeiradar.app
 
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
+import androidx.datastore.preferences.core.booleanPreferencesKey
+import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.intPreferencesKey
+import androidx.datastore.preferences.core.stringPreferencesKey
 import com.koubeiradar.agent.llm.LlmConfig
 import com.koubeiradar.agent.llm.LlmProvider
 import com.koubeiradar.app.settings.AppSettings
@@ -8,6 +12,7 @@ import com.koubeiradar.app.settings.Checked
 import com.koubeiradar.app.settings.DataStoreSettingsRepository
 import com.koubeiradar.app.settings.InputProblem
 import com.koubeiradar.app.settings.InputRules
+import com.koubeiradar.app.settings.MealNotificationSettings
 import com.koubeiradar.app.settings.SavedPlace
 import com.koubeiradar.app.settings.ScoringPreset
 import com.koubeiradar.app.settings.Secret
@@ -27,6 +32,7 @@ import kotlinx.coroutines.runBlocking
 import org.junit.Rule
 import org.junit.rules.TemporaryFolder
 import java.io.File
+import java.time.LocalTime
 import java.util.Base64
 import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
@@ -225,6 +231,81 @@ class DataStoreSettingsRepositoryTest {
         val settings = reopened.settings.first()
         assertEquals(Secret.EMPTY, settings.amapKey)
         assertTrue(settings.useDemoData)
+    }
+
+    @Test
+    fun `meal notification settings and a remembered device position round trip`() = runBlocking<Unit> {
+        val repository = repository(File(folder.root, "meals.preferences_pb"), newKey())
+        val saved = AppSettings(
+            savedPlace = SavedPlace("", GeoPoint(30.25, 120.17), fromDevice = true),
+            meals = MealNotificationSettings(
+                lunchEnabled = true,
+                lunchTime = LocalTime.of(12, 15),
+                dinnerEnabled = true,
+                dinnerTime = LocalTime.of(19, 5),
+                weekdaysOnly = true,
+            ),
+        )
+
+        repository.update { saved }
+
+        assertEquals(saved, repository.settings.first())
+        repository.update { it.copy(meals = it.meals.copy(lunchEnabled = false)) }
+        assertEquals(saved.meals.copy(lunchEnabled = false), repository.settings.first().meals, "one change leaves the rest alone")
+    }
+
+    @Test
+    fun `settings stored before the meal notifications existed read with them off and keep everything else`() = runBlocking<Unit> {
+        val dataStore = PreferenceDataStoreFactory.create(scope = scope) { File(folder.root, "old.preferences_pb") }
+        dataStore.edit {
+            it[booleanPreferencesKey("use_demo_data")] = true
+            it[stringPreferencesKey("scoring_preset")] = ScoringPreset.FAST_FIRST.name
+            it[stringPreferencesKey("saved_place_json")] = """{"address":"望京SOHO","point":{"lat":39.99,"lng":116.47}}"""
+        }
+        val repository = DataStoreSettingsRepository(dataStore, SecretBox { newKey() }, Dispatchers.Unconfined)
+
+        val settings = repository.settings.first()
+
+        assertEquals(MealNotificationSettings(), settings.meals)
+        assertEquals(SavedPlace("望京SOHO", GeoPoint(39.99, 116.47), fromDevice = false), settings.savedPlace)
+        assertTrue(settings.useDemoData)
+        assertEquals(ScoringPreset.FAST_FIRST, settings.preset)
+    }
+
+    @Test
+    fun `a damaged stored time falls back to the default of that meal only`() = runBlocking<Unit> {
+        val dataStore = PreferenceDataStoreFactory.create(scope = scope) { File(folder.root, "damaged.preferences_pb") }
+        dataStore.edit {
+            it[booleanPreferencesKey("meal_lunch_enabled")] = true
+            it[intPreferencesKey("meal_lunch_minute")] = -5
+            it[booleanPreferencesKey("meal_dinner_enabled")] = true
+            it[intPreferencesKey("meal_dinner_minute")] = 18 * 60
+        }
+        val repository = DataStoreSettingsRepository(dataStore, SecretBox { newKey() }, Dispatchers.Unconfined)
+
+        val meals = repository.settings.first().meals
+
+        assertTrue(meals.lunchEnabled)
+        assertEquals(MealNotificationSettings.DEFAULT_LUNCH_TIME, meals.lunchTime)
+        assertEquals(LocalTime.of(18, 0), meals.dinnerTime)
+    }
+
+    @Test
+    fun `a stored time beyond the end of the day is also rejected`() = runBlocking<Unit> {
+        val dataStore = PreferenceDataStoreFactory.create(scope = scope) { File(folder.root, "beyond.preferences_pb") }
+        dataStore.edit { it[intPreferencesKey("meal_dinner_minute")] = 24 * 60 }
+        val repository = DataStoreSettingsRepository(dataStore, SecretBox { newKey() }, Dispatchers.Unconfined)
+
+        assertEquals(MealNotificationSettings.DEFAULT_DINNER_TIME, repository.settings.first().meals.dinnerTime)
+    }
+
+    @Test
+    fun `a damaged remembered place reads as no place`() = runBlocking<Unit> {
+        val dataStore = PreferenceDataStoreFactory.create(scope = scope) { File(folder.root, "place.preferences_pb") }
+        dataStore.edit { it[stringPreferencesKey("saved_place_json")] = "{not json" }
+        val repository = DataStoreSettingsRepository(dataStore, SecretBox { newKey() }, Dispatchers.Unconfined)
+
+        assertNull(repository.settings.first().savedPlace)
     }
 
     @Test

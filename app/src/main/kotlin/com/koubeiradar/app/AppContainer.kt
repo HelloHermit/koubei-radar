@@ -1,17 +1,26 @@
 package com.koubeiradar.app
 
 import android.content.Context
+import android.util.Log
 import androidx.datastore.core.handlers.ReplaceFileCorruptionHandler
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.preferencesDataStoreFile
 import com.koubeiradar.app.platform.AndroidDeliveryLauncher
 import com.koubeiradar.app.platform.AndroidImageLoader
+import com.koubeiradar.app.meal.MealDelivery
+import com.koubeiradar.app.meal.MealRecommendation
 import com.koubeiradar.app.platform.AndroidLocationService
+import com.koubeiradar.app.platform.AndroidMealNotifier
+import com.koubeiradar.app.platform.AndroidNotificationPermission
 import com.koubeiradar.app.platform.DeliveryLauncher
+import com.koubeiradar.app.platform.HomeRequests
 import com.koubeiradar.app.platform.ImageLoader
 import com.koubeiradar.app.platform.LocationService
+import com.koubeiradar.app.platform.NotificationPermission
+import com.koubeiradar.app.platform.ResourceMealTexts
 import com.koubeiradar.app.platform.ShareInbox
+import com.koubeiradar.app.platform.WorkManagerMealScheduler
 import com.koubeiradar.app.service.AdvisorService
 import com.koubeiradar.app.service.CachingRankerProvider
 import com.koubeiradar.app.service.DataSources
@@ -30,9 +39,12 @@ import com.koubeiradar.app.store.PersistingShopStore
 import com.koubeiradar.app.store.RepositoryShopStore
 import com.koubeiradar.app.store.ShopStore
 import com.koubeiradar.data.repo.ShopRepository
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import okhttp3.OkHttpClient
 import java.time.Clock
@@ -87,7 +99,38 @@ class AppContainer(context: Context, secretKeyProvider: () -> SecretKey = androi
     val advisorService: AdvisorService = LlmAdvisorService(settings, shopRepository, rankers, llmHttp)
     val importService: ImportService = LlmImportService(settings, llmHttp)
 
+    val homeRequests = HomeRequests()
+    val notificationPermission: NotificationPermission = AndroidNotificationPermission(appContext)
+    private val mealNotifier = AndroidMealNotifier(appContext)
+    private val mealScheduler = WorkManagerMealScheduler(appContext, clock)
+    val mealDelivery = MealDelivery(
+        recommendation = MealRecommendation(settings, dataSources, shopRepository, rankers, ResourceMealTexts(appContext)),
+        notifier = mealNotifier,
+        scheduler = mealScheduler,
+        settings = settings,
+        clock = clock,
+    )
+
     init {
         applicationScope.launch { persistingStore.restore() }
+        applicationScope.launch { keepMealScheduleInSync() }
+    }
+
+    /** At start and on every change of the meal settings: the notification channel exists and the queued runs match the settings. */
+    private suspend fun keepMealScheduleInSync() {
+        mealNotifier.ensureChannel()
+        settings.settings.map { it.meals }.distinctUntilChanged().collect { meals ->
+            try {
+                mealScheduler.sync(meals)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.w(TAG, "could not bring the meal schedule up to date", e)
+            }
+        }
+    }
+
+    private companion object {
+        const val TAG = "AppContainer"
     }
 }

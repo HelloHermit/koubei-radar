@@ -1,5 +1,12 @@
 package com.koubeiradar.app.ui.settings
 
+import android.Manifest
+import android.content.ActivityNotFoundException
+import android.content.Intent
+import android.os.Build
+import android.provider.Settings
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.StringRes
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -38,6 +45,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
@@ -46,6 +54,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.koubeiradar.agent.llm.LlmProvider
 import com.koubeiradar.agent.llm.ProviderPresets
@@ -53,6 +62,7 @@ import com.koubeiradar.app.BuildConfig
 import com.koubeiradar.app.R
 import com.koubeiradar.app.settings.AnthropicSettings
 import com.koubeiradar.app.settings.InputProblem
+import com.koubeiradar.app.settings.Meal
 import com.koubeiradar.app.settings.SettingField
 import com.koubeiradar.app.ui.components.ScoringPresetSelector
 import com.koubeiradar.app.ui.components.SectionTitle
@@ -60,7 +70,7 @@ import com.koubeiradar.app.ui.components.asString
 import com.koubeiradar.app.ui.criteria.CriteriaSheet
 import com.koubeiradar.app.ui.criteria.summaryText
 
-private enum class Dialog { PROVIDER, OPENAI_PRESET, EFFORT, CRITERIA, CLEAR_IMPORTED, CLEAR_POOL, CLEAR_KEYS }
+private enum class Dialog { PROVIDER, OPENAI_PRESET, EFFORT, CRITERIA, CLEAR_IMPORTED, CLEAR_POOL, CLEAR_KEYS, NOTIFICATION_RATIONALE, NOTIFICATIONS_BLOCKED }
 
 /** 设置: data source, AI provider, preferences, data management and the privacy statement. */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -68,15 +78,32 @@ private enum class Dialog { PROVIDER, OPENAI_PRESET, EFFORT, CRITERIA, CLEAR_IMP
 fun SettingsScreen(viewModel: SettingsViewModel, onBack: () -> Unit, onMessage: (String) -> Unit) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val resources = LocalResources.current
+    val context = LocalContext.current
+    var dialog by rememberSaveable { mutableStateOf<Dialog?>(null) }
+    var field by rememberSaveable { mutableStateOf<SettingField?>(null) }
+    var timeOf by rememberSaveable { mutableStateOf<Meal?>(null) }
+    var pendingMeal by rememberSaveable { mutableStateOf<Meal?>(null) }
+    val permissionRequest = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        pendingMeal?.let { viewModel.onNotificationPermissionResult(it, granted) }
+        pendingMeal = null
+    }
     LaunchedEffect(viewModel) {
         viewModel.events.collect { event ->
             when (event) {
                 is SettingsEvent.Message -> onMessage(event.text.asString(resources))
+                is SettingsEvent.RequestNotificationPermission -> {
+                    pendingMeal = event.meal
+                    dialog = Dialog.NOTIFICATION_RATIONALE
+                }
+
+                SettingsEvent.NotificationsBlocked -> dialog = Dialog.NOTIFICATIONS_BLOCKED
             }
         }
     }
-    var dialog by rememberSaveable { mutableStateOf<Dialog?>(null) }
-    var field by rememberSaveable { mutableStateOf<SettingField?>(null) }
+    LifecycleResumeEffect(viewModel) {
+        viewModel.refreshNotificationStatus()
+        onPauseOrDispose {}
+    }
 
     Scaffold(
         topBar = {
@@ -125,6 +152,15 @@ fun SettingsScreen(viewModel: SettingsViewModel, onBack: () -> Unit, onMessage: 
             }
             SettingRow(R.string.settings_default_criteria, state.criteria.summaryText()) { dialog = Dialog.CRITERIA }
 
+            MealSection(
+                state = state,
+                onToggle = viewModel::setMealEnabled,
+                onPickTime = { timeOf = it },
+                onWeekdaysOnly = viewModel::setWeekdaysOnly,
+                onShowBlocked = { dialog = Dialog.NOTIFICATIONS_BLOCKED },
+                onSendTest = viewModel::sendTestNotification,
+            )
+
             SectionTitle(stringResource(R.string.settings_section_manage), Modifier.padding(horizontal = 16.dp, vertical = 12.dp))
             SettingRow(R.string.settings_clear_imported, stringResource(R.string.settings_clear_imported_summary)) { dialog = Dialog.CLEAR_IMPORTED }
             SettingRow(R.string.settings_clear_pool, stringResource(R.string.settings_clear_pool_summary)) { dialog = Dialog.CLEAR_POOL }
@@ -136,6 +172,7 @@ fun SettingsScreen(viewModel: SettingsViewModel, onBack: () -> Unit, onMessage: 
                 Text(stringResource(R.string.settings_privacy_title), style = MaterialTheme.typography.titleSmall)
                 Text(stringResource(R.string.settings_privacy_amap), style = MaterialTheme.typography.bodyMedium)
                 Text(stringResource(R.string.settings_privacy_llm), style = MaterialTheme.typography.bodyMedium)
+                Text(stringResource(R.string.settings_privacy_meals), style = MaterialTheme.typography.bodyMedium)
                 Text(stringResource(R.string.settings_privacy_local), style = MaterialTheme.typography.bodyMedium)
                 Text(
                     stringResource(R.string.settings_version, BuildConfig.VERSION_NAME),
@@ -153,6 +190,14 @@ fun SettingsScreen(viewModel: SettingsViewModel, onBack: () -> Unit, onMessage: 
             onSubmit = viewModel::submit,
             onClear = if (current.isCredential && state.isSet(current)) ({ viewModel.clearCredential(current) }) else null,
             onDismiss = { field = null },
+        )
+    }
+    timeOf?.let { meal ->
+        MealTimeDialog(
+            meal = meal,
+            initial = state.meals.timeOf(meal),
+            onConfirm = { hour, minute -> viewModel.setMealTime(meal, hour, minute) },
+            onDismiss = { timeOf = null },
         )
     }
     when (dialog) {
@@ -187,7 +232,37 @@ fun SettingsScreen(viewModel: SettingsViewModel, onBack: () -> Unit, onMessage: 
         Dialog.CLEAR_IMPORTED -> ConfirmDialog(R.string.settings_clear_imported, R.string.settings_clear_imported_confirm, viewModel::clearImportedShops) { dialog = null }
         Dialog.CLEAR_POOL -> ConfirmDialog(R.string.settings_clear_pool, R.string.settings_clear_pool_confirm, viewModel::clearCandidatePool) { dialog = null }
         Dialog.CLEAR_KEYS -> ConfirmDialog(R.string.settings_clear_keys, R.string.settings_clear_keys_confirm, viewModel::clearAllCredentials) { dialog = null }
+        Dialog.NOTIFICATION_RATIONALE -> NotificationRationaleDialog(
+            onContinue = {
+                dialog = null
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    permissionRequest.launch(Manifest.permission.POST_NOTIFICATIONS)
+                } else {
+                    pendingMeal?.let { viewModel.onNotificationPermissionResult(it, false) }
+                    pendingMeal = null
+                }
+            },
+            onDismiss = {
+                dialog = null
+                pendingMeal = null
+            },
+        )
+
+        Dialog.NOTIFICATIONS_BLOCKED -> NotificationsBlockedDialog(
+            onOpenSettings = { openNotificationSettings(context) },
+            onDismiss = { dialog = null },
+        )
+
         null -> Unit
+    }
+}
+
+private fun openNotificationSettings(context: android.content.Context) {
+    val intent = Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
+    try {
+        context.startActivity(intent)
+    } catch (e: ActivityNotFoundException) {
+        // A device without a settings app: nothing more to offer.
     }
 }
 

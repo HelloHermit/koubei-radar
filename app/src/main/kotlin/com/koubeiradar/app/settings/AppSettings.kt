@@ -31,9 +31,13 @@ enum class ScoringPreset(val config: ScoringConfig) {
     FAST_FIRST(ScoringConfig.FAST_FIRST),
 }
 
-/** A place the user typed in (geocoded by Amap, GCJ-02), remembered so a cold start does not ask again. */
+/**
+ * The last place the user established in the app, remembered so a cold start does not ask again and so the daily
+ * recommendation knows where to look (it never reads the location itself). GCJ-02. A typed address keeps its text;
+ * a device position is [fromDevice] and has no address.
+ */
 @Serializable
-data class SavedPlace(val address: String, val point: GeoPoint)
+data class SavedPlace(val address: String, val point: GeoPoint, val fromDevice: Boolean = false)
 
 data class AnthropicSettings(
     val apiKey: Secret = Secret.EMPTY,
@@ -71,6 +75,7 @@ data class AppSettings(
     val preset: ScoringPreset = ScoringPreset.REPUTATION_FIRST,
     val demoBannerDismissed: Boolean = false,
     val savedPlace: SavedPlace? = null,
+    val meals: MealNotificationSettings = MealNotificationSettings(),
 ) {
     /** Real Amap data is used only with a key and while the demo switch is off. */
     val usesAmap: Boolean get() = amapKey.isSet && !useDemoData

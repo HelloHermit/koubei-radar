@@ -289,6 +289,41 @@ class HomeViewModelTest {
     }
 
     @Test
+    fun `a position found by the device is remembered for the daily recommendation`() = runTest {
+        settings.state.value = amap
+        location.permission = true
+        location.result = LocationResult.Found(somewhere, accuracyMeters = 25)
+
+        viewModel()
+        advanceUntilIdle()
+
+        assertEquals(SavedPlace(address = "", point = somewhere, fromDevice = true), settings.current.savedPlace)
+    }
+
+    @Test
+    fun `a failed position lookup leaves the remembered place alone`() = runTest {
+        settings.state.value = amap.copy(savedPlace = SavedPlace("公司", somewhere))
+        location.permission = true
+        location.result = LocationResult.Unavailable
+
+        viewModel()
+        advanceUntilIdle()
+
+        assertEquals(SavedPlace("公司", somewhere), settings.current.savedPlace)
+    }
+
+    @Test
+    fun `a remembered device position is not mistaken for a typed address when there is no permission`() = runTest {
+        settings.state.value = amap.copy(savedPlace = SavedPlace("", somewhere, fromDevice = true))
+        val viewModel = viewModel()
+        advanceUntilIdle()
+
+        assertEquals(PlaceState.Unknown, viewModel.uiState.value.place)
+        assertEquals(HomeContent.NeedsLocation, viewModel.uiState.value.content)
+        assertTrue(store.refreshes.isEmpty())
+    }
+
+    @Test
     fun `address lookup reports what went wrong inside the dialog`() = runTest {
         val viewModel = viewModel()
         advanceUntilIdle()

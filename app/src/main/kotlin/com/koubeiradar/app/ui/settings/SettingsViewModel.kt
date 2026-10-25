@@ -6,10 +6,14 @@ import com.koubeiradar.agent.llm.LlmProvider
 import com.koubeiradar.agent.llm.ProviderPreset
 import com.koubeiradar.agent.llm.ProviderPresets
 import com.koubeiradar.app.R
+import com.koubeiradar.app.meal.MealTestSender
+import com.koubeiradar.app.meal.TestOutcome
+import com.koubeiradar.app.platform.NotificationPermission
 import com.koubeiradar.app.settings.AnthropicSettings
 import com.koubeiradar.app.settings.AppSettings
 import com.koubeiradar.app.settings.Checked
 import com.koubeiradar.app.settings.InputProblem
+import com.koubeiradar.app.settings.Meal
 import com.koubeiradar.app.settings.SaveResult
 import com.koubeiradar.app.settings.ScoringPreset
 import com.koubeiradar.app.settings.Secret
@@ -21,14 +25,17 @@ import com.koubeiradar.app.settings.with
 import com.koubeiradar.app.store.ShopStore
 import com.koubeiradar.app.ui.UiText
 import com.koubeiradar.core.model.Criteria
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import java.time.LocalTime
 
 /**
  * Settings screen. Text fields are validated and normalised here before anything is stored; the screen only ever
@@ -37,14 +44,19 @@ import kotlinx.coroutines.launch
 class SettingsViewModel(
     private val settings: SettingsRepository,
     private val store: ShopStore,
+    private val notifications: NotificationPermission,
+    private val mealTests: MealTestSender,
 ) : ViewModel() {
 
     private val eventChannel = Channel<SettingsEvent>(Channel.BUFFERED)
     val events: Flow<SettingsEvent> = eventChannel.receiveAsFlow()
 
-    val uiState: StateFlow<SettingsUiState> = settings.settings
-        .map { it.toUiState() }
-        .stateIn(viewModelScope, SharingStarted.Eagerly, SettingsUiState())
+    private val notificationsAllowed = MutableStateFlow(notifications.isGranted())
+    private val sendingTest = MutableStateFlow(false)
+
+    val uiState: StateFlow<SettingsUiState> = combine(settings.settings, notificationsAllowed, sendingTest) { current, allowed, sending ->
+        current.toUiState(allowed, sending)
+    }.stateIn(viewModelScope, SharingStarted.Eagerly, SettingsUiState())
 
     /**
      * Validates [raw] and stores it. Returns the problem when the input is rejected (nothing is stored), `null` when it
@@ -101,6 +113,60 @@ class SettingsViewModel(
         viewModelScope.launch { save { it.copy(criteria = criteria) } }
     }
 
+    /** Turning a meal on needs the notification permission; without it the switch stays off and the screen is asked to request it. */
+    fun setMealEnabled(meal: Meal, enabled: Boolean) {
+        if (enabled && !notifications.isGranted()) {
+            eventChannel.trySend(SettingsEvent.RequestNotificationPermission(meal))
+            return
+        }
+        viewModelScope.launch { save { it.copy(meals = it.meals.withEnabled(meal, enabled)) } }
+    }
+
+    /** Result of the system permission dialog that [SettingsEvent.RequestNotificationPermission] led to. */
+    fun onNotificationPermissionResult(meal: Meal, granted: Boolean) {
+        notificationsAllowed.value = granted
+        if (granted) {
+            viewModelScope.launch { save { it.copy(meals = it.meals.withEnabled(meal, true)) } }
+        } else {
+            eventChannel.trySend(SettingsEvent.NotificationsBlocked)
+        }
+    }
+
+    /** The user may have changed the notification settings of the app in the system while this screen was in the background. */
+    fun refreshNotificationStatus() {
+        notificationsAllowed.value = notifications.isGranted()
+    }
+
+    fun setMealTime(meal: Meal, hour: Int, minute: Int) {
+        if (hour !in 0..23 || minute !in 0..59) return
+        viewModelScope.launch { save { it.copy(meals = it.meals.withTime(meal, LocalTime.of(hour, minute))) } }
+    }
+
+    fun setWeekdaysOnly(enabled: Boolean) {
+        viewModelScope.launch { save { it.copy(meals = it.meals.copy(weekdaysOnly = enabled)) } }
+    }
+
+    /** Runs the daily recommendation once, now, with the current settings. */
+    fun sendTestNotification() {
+        if (!sendingTest.compareAndSet(expect = false, update = true)) return
+        viewModelScope.launch {
+            try {
+                when (mealTests.sendTest()) {
+                    TestOutcome.SENT -> emit(R.string.settings_meals_msg_sent)
+                    TestOutcome.NOTHING_TO_RECOMMEND -> emit(R.string.settings_meals_msg_nothing)
+                    TestOutcome.NOTIFICATIONS_BLOCKED -> eventChannel.trySend(SettingsEvent.NotificationsBlocked)
+                    TestOutcome.FAILED -> emit(R.string.settings_meals_msg_failed)
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                emit(R.string.settings_meals_msg_failed)
+            } finally {
+                sendingTest.value = false
+            }
+        }
+    }
+
     fun clearImportedShops() {
         store.clearImported()
         emit(R.string.settings_msg_imported_cleared)
@@ -135,7 +201,7 @@ class SettingsViewModel(
         eventChannel.trySend(SettingsEvent.Message(UiText(messageRes)))
     }
 
-    private fun AppSettings.toUiState() = SettingsUiState(
+    private fun AppSettings.toUiState(notificationsAllowed: Boolean, sendingTest: Boolean) = SettingsUiState(
         loaded = true,
         amapKey = KeyStatus.of(amapKey),
         useDemoData = useDemoData,
@@ -151,5 +217,9 @@ class SettingsViewModel(
         openAiPreset = ProviderPresets.openAiCompatible.firstOrNull { it.baseUrl == openAi.baseUrl },
         scoringPreset = preset,
         criteria = criteria,
+        meals = meals,
+        notificationsAllowed = notificationsAllowed,
+        savedPlace = savedPlace,
+        sendingTest = sendingTest,
     )
 }

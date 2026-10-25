@@ -26,5 +26,5 @@ fun detailViewModelFactory(c: AppContainer, shopId: String) = viewModelFactory {
 }
 
 fun settingsViewModelFactory(c: AppContainer) = viewModelFactory {
-    initializer { SettingsViewModel(c.settings, c.shopStore) }
+    initializer { SettingsViewModel(c.settings, c.shopStore, c.notificationPermission, c.mealDelivery) }
 }
