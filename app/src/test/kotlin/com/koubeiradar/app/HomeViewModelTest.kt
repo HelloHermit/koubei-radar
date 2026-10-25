@@ -42,7 +42,8 @@ class HomeViewModelTest {
     private val store = FakeShopStore()
     private val rankers = FakeRankers()
     private val geocoder = FakeGeocoder()
-    private val dataSources = FakeDataSources(geocoder)
+    private val reverse = FakeReverseGeocoder()
+    private val dataSources = FakeDataSources(geocoder, reverse)
     private val location = FakeLocation()
     private val places = PlaceStore()
 
@@ -322,6 +323,144 @@ class HomeViewModelTest {
         assertEquals(PlaceState.Unknown, viewModel.uiState.value.place)
         assertEquals(HomeContent.NeedsLocation, viewModel.uiState.value.content)
         assertTrue(store.refreshes.isEmpty())
+    }
+
+    @Test
+    fun `the address of a device position appears after the fix and is remembered with it`() = runTest {
+        settings.state.value = amap
+        location.permission = true
+        location.result = LocationResult.Found(somewhere, accuracyMeters = 25)
+        reverse.gate = CompletableDeferred()
+        reverse.labels[somewhere] = "朝阳区望京街道 · 望京SOHO附近"
+
+        val viewModel = viewModel()
+        advanceUntilIdle()
+
+        assertEquals(PlaceState.Device(somewhere, 25), viewModel.uiState.value.place, "the fix is shown at once, without the address")
+        assertEquals(somewhere, store.refreshes.single().query.center, "and the search does not wait for it")
+        assertEquals(SavedPlace(address = "", point = somewhere, fromDevice = true), settings.current.savedPlace)
+
+        reverse.gate?.complete(Unit)
+        advanceUntilIdle()
+
+        assertEquals(PlaceState.Device(somewhere, 25, label = "朝阳区望京街道 · 望京SOHO附近"), viewModel.uiState.value.place)
+        assertEquals(SavedPlace("朝阳区望京街道 · 望京SOHO附近", somewhere, fromDevice = true), settings.current.savedPlace)
+        assertEquals(listOf(somewhere), reverse.requests)
+        assertEquals(1, store.refreshes.size)
+    }
+
+    @Test
+    fun `a failing, empty or blank address lookup keeps the plain current location`() = runTest {
+        settings.state.value = amap
+        location.permission = true
+        location.result = LocationResult.Found(somewhere, accuracyMeters = 25)
+
+        for (answer in listOf<() -> Unit>(
+            { reverse.failure = ShopSourceException("quota", ShopSourceException.Kind.QUOTA) },
+            { reverse.failure = IllegalStateException("boom") },
+            { reverse.failure = null; reverse.fallback = null },
+            { reverse.fallback = "   " },
+        )) {
+            answer()
+            places.set(PlaceState.Unknown)
+            val viewModel = viewModel()
+            val events = eventsOf(viewModel)
+            advanceUntilIdle()
+
+            assertEquals(PlaceState.Device(somewhere, 25), viewModel.uiState.value.place)
+            assertEquals(SavedPlace("", somewhere, fromDevice = true), settings.current.savedPlace)
+            assertEquals(emptyList(), events, "a failed address lookup is silent")
+        }
+        assertEquals(4, reverse.requests.size)
+    }
+
+    @Test
+    fun `the demo data makes no address request at all`() = runTest {
+        location.permission = true
+        location.result = LocationResult.Found(somewhere, accuracyMeters = 25)
+        reverse.fallback = "should never be shown"
+
+        val viewModel = viewModel()
+        advanceUntilIdle()
+
+        assertEquals(PlaceState.Device(somewhere, 25), viewModel.uiState.value.place)
+        assertTrue(reverse.requests.isEmpty())
+    }
+
+    @Test
+    fun `a newer fix cancels the address lookup of the older one`() = runTest {
+        val elsewhere = GeoPoint(31.2, 121.5)
+        settings.state.value = amap
+        location.permission = true
+        location.result = LocationResult.Found(somewhere, accuracyMeters = 25)
+        reverse.gate = CompletableDeferred()
+        reverse.labels[somewhere] = "旧地址"
+        reverse.labels[elsewhere] = "新地址"
+        val viewModel = viewModel()
+        advanceUntilIdle()
+        assertEquals(listOf(somewhere), reverse.requests, "the first lookup is waiting")
+
+        location.result = LocationResult.Found(elsewhere, accuracyMeters = 10)
+        viewModel.refresh()
+        advanceUntilIdle()
+        assertEquals(1, reverse.cancelled)
+        assertEquals(PlaceState.Device(elsewhere, 10), viewModel.uiState.value.place)
+
+        reverse.gate?.complete(Unit)
+        advanceUntilIdle()
+
+        assertEquals(PlaceState.Device(elsewhere, 10, label = "新地址"), viewModel.uiState.value.place)
+        assertEquals(SavedPlace("新地址", elsewhere, fromDevice = true), settings.current.savedPlace)
+    }
+
+    @Test
+    fun `a typed address cancels the pending address lookup and is never overwritten by it`() = runTest {
+        settings.state.value = amap
+        location.permission = true
+        location.result = LocationResult.Found(somewhere, accuracyMeters = 25)
+        reverse.gate = CompletableDeferred()
+        reverse.fallback = "设备地址"
+        geocoder.result = GeoPoint(31.2, 121.5)
+        val viewModel = viewModel()
+        advanceUntilIdle()
+
+        viewModel.openAddressDialog()
+        viewModel.submitAddress("公司")
+        advanceUntilIdle()
+        reverse.gate?.complete(Unit)
+        advanceUntilIdle()
+
+        assertEquals(1, reverse.cancelled)
+        assertEquals(PlaceState.Manual("公司", GeoPoint(31.2, 121.5)), viewModel.uiState.value.place)
+        assertEquals(SavedPlace("公司", GeoPoint(31.2, 121.5)), settings.current.savedPlace)
+    }
+
+    @Test
+    fun `a stored device place, with or without an address, is still not a typed address`() = runTest {
+        for (address in listOf("", "朝阳区望京街道 · 望京SOHO附近")) {
+            settings.state.value = amap.copy(savedPlace = SavedPlace(address, somewhere, fromDevice = true))
+            places.set(PlaceState.Unknown)
+            val viewModel = viewModel()
+            advanceUntilIdle()
+
+            assertEquals(PlaceState.Unknown, viewModel.uiState.value.place, "address '$address'")
+            assertEquals(HomeContent.NeedsLocation, viewModel.uiState.value.content)
+        }
+        assertTrue(reverse.requests.isEmpty())
+    }
+
+    @Test
+    fun `an old stored place without an address gets its label on the next fix`() = runTest {
+        settings.state.value = amap.copy(savedPlace = SavedPlace("", somewhere, fromDevice = true))
+        location.permission = true
+        location.result = LocationResult.Found(somewhere, accuracyMeters = 25)
+        reverse.fallback = "望京街道"
+
+        val viewModel = viewModel()
+        advanceUntilIdle()
+
+        assertEquals(PlaceState.Device(somewhere, 25, label = "望京街道"), viewModel.uiState.value.place)
+        assertEquals(SavedPlace("望京街道", somewhere, fromDevice = true), settings.current.savedPlace)
     }
 
     @Test

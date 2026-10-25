@@ -7,6 +7,7 @@ import com.koubeiradar.app.settings.Secret
 import com.koubeiradar.app.ui.addressNeedsKeyRes
 import com.koubeiradar.app.ui.messageRes
 import com.koubeiradar.data.ShopSourceException.Kind
+import com.koubeiradar.data.CachingReverseGeocoder
 import com.koubeiradar.data.amap.AmapGeocoder
 import com.koubeiradar.data.amap.AmapShopSource
 import com.koubeiradar.data.baidu.BaiduGeocoder
@@ -16,7 +17,9 @@ import okhttp3.OkHttpClient
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
+import kotlin.test.assertNotSame
 import kotlin.test.assertNull
+import kotlin.test.assertSame
 
 /** The real [DefaultDataSources] choice and the provider-specific texts, without any network. */
 class PoiProviderTest {
@@ -49,7 +52,23 @@ class PoiProviderTest {
         for (settings in unsuitable) {
             assertIs<DemoShopSource>(sources.sourceFor(settings), settings.toString())
             assertNull(sources.geocoderFor(settings), settings.toString())
+            assertNull(sources.reverseGeocoderFor(settings), "demo data never sends a coordinate: $settings")
         }
+    }
+
+    @Test
+    fun `the reverse geocoder is cached, shared across calls and rebuilt when the key or provider changes`() {
+        val first = sources.reverseGeocoderFor(amap)
+        assertIs<CachingReverseGeocoder>(first)
+        assertSame(first, sources.reverseGeocoderFor(amap.copy(useDemoData = false)), "same provider and key: the cache survives")
+
+        val rekeyed = sources.reverseGeocoderFor(amap.copy(amapKey = Secret("other-key")))
+        assertIs<CachingReverseGeocoder>(rekeyed)
+        assertNotSame(first, rekeyed)
+        val onBaidu = sources.reverseGeocoderFor(baidu)
+        assertIs<CachingReverseGeocoder>(onBaidu)
+        assertNotSame(rekeyed, onBaidu)
+        assertSame(onBaidu, sources.reverseGeocoderFor(baidu))
     }
 
     @Test

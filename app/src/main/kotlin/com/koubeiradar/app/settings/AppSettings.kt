@@ -37,7 +37,8 @@ enum class ScoringPreset(val config: ScoringConfig) {
 /**
  * The last place the user established in the app, remembered so a cold start does not ask again and so the daily
  * recommendation knows where to look (it never reads the location itself). GCJ-02. A typed address keeps its text;
- * a device position is [fromDevice] and has no address.
+ * a device position is [fromDevice] and has a blank address until its reverse-geocoded label is known (and always, if that
+ * lookup is unavailable or fails, as in everything stored before the label existed).
  */
 @Serializable
 data class SavedPlace(val address: String, val point: GeoPoint, val fromDevice: Boolean = false)
