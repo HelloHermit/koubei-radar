@@ -304,7 +304,7 @@ UI 与智能体共享的内存池 = **附近店铺（来自 ShopSource）∪ 导
 
 ## 7. Android 应用（`:app`）
 
-技术栈：Kotlin、Jetpack Compose + Material 3（动态取色）、Navigation Compose、ViewModel + StateFlow、DataStore、协程；**手动 DI**（`AppContainer`），不引入 Hilt/KSP；`minSdk 26`，`targetSdk 36`。**不依赖 Google Play 服务**（国内机型常没有）：定位用系统 `LocationManager`。
+技术栈：Kotlin、Jetpack Compose + Material 3（深海蓝品牌配色，默认关闭动态取色）、Navigation Compose、ViewModel + StateFlow、DataStore、协程；**手动 DI**（`AppContainer`），不引入 Hilt/KSP；`minSdk 26`，`targetSdk 36`。**不依赖 Google Play 服务**（国内机型常没有）：定位用系统 `LocationManager`。
 
 | 页面 | 内容 |
 |---|---|
@@ -361,7 +361,7 @@ UI 与智能体共享的内存池 = **附近店铺（来自 ShopSource）∪ 导
 | `:agent` | 假 LLM 脚本化跑完整循环（并行工具、提醒一次、兜底、未知 shop_id 纠错、提示注入）；两个客户端用 MockWebServer 验证线协议（Claude 为 SSE 流：thinking 签名与分片入参重组、流中途 `error`、断流、取消即断开连接，以及 thinking 块回放、`is_error`、工具结果合并；OpenAI `arguments` 字符串）；**端到端：真实工具 + 真实候选池 + 真实打分器 + 脚本化模型** | 155 |
 | `:app` | ViewModel（假服务；含定位地址：先显示定位、后台解析出标签并持久化、失败静默、演示模式零请求、新定位/手输地址取消旧解析、旧版空地址设备位置照常读取）、设置与加密（含数据源选择、百度 AK、旧版设置兼容）、数据源选择、坐标转换、分享入口与限额、持久化；**Robolectric 冒烟测试**：真实 `MainActivity`/`AppContainer` 启动到首帧、各标签与详情/设置导航、旋转重建、分享入口、无 Key 引导、权限被拒、1.5 倍字体、暗色，并产出截图；**每日推荐**：`nextTrigger` 边界（严格晚于、周末、跨月年、夏令时）、用例决定（无位置/无店/避雷/文案/重试）、设置持久化与旧版本兼容、WorkManager 请求与通知（Robolectric） | 274 |
 
-冒烟测试在 JVM 上跑，**不等于真机**：真实 AndroidKeyStore、软键盘/窗口边距、真实定位、动态取色都没有覆盖（定位地址的冒烟测试用的是假的反向地理编码器，没有网络）。它们发现并修复了 3 个真实缺陷（异常的分享提供方让导入页崩溃；分享到达时已存活的导入页不会切换标签；提示条按钮白底白字），评审中又加固了持久化写线程（任何异常都不会让它静默停止）；两位独立评审者另外复现并修复了 10 个缺陷（见 README），其回归测试在 `reviewer/`、`review/` 包下；其中 R1a/R1e 验证取消 Claude 调用会真的断开连接（响应头之前的限制见 §5.5）。
+冒烟测试在 JVM 上跑，**不等于真机**：真实 AndroidKeyStore、软键盘/窗口边距、真实定位、品牌配色在真机上的实际观感都没有覆盖（定位地址的冒烟测试用的是假的反向地理编码器，没有网络）。它们发现并修复了 3 个真实缺陷（异常的分享提供方让导入页崩溃；分享到达时已存活的导入页不会切换标签；提示条按钮白底白字），评审中又加固了持久化写线程（任何异常都不会让它静默停止）；两位独立评审者另外复现并修复了 10 个缺陷（见 README），其回归测试在 `reviewer/`、`review/` 包下；其中 R1a/R1e 验证取消 Claude 调用会真的断开连接（响应头之前的限制见 §5.5）。
 
 未验证：真实高德/百度/Claude/OpenAI 兼容接口（只有 MockWebServer；反向地理编码的 `formatted_address`、无结果的真实返回与地址质量，见 §3.5；百度 3.0 圆形检索的评分字段嵌套形状（页面无示例）、`type` 作关键字筛选与 `sort_name:distance` 的实际效果、每页实际条数、地理编码无结果的返回、真实 AK 的 IP 白名单/SN 限制，见 §3.4）、Anthropic SDK 在 Android 上的运行、R8 规则在真机上的效果（§7.2，只检查过 R8 输出）、外卖 App 包名、评分对真实数据的校准。
 
