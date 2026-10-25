@@ -17,7 +17,7 @@
 
 ## 界面预览
 
-下面是在 JVM 上用 Robolectric 渲染的真实界面（演示数据，无需任何 Key）。配色是 Robolectric 的默认 Material You 取色，真机上会跟随你的壁纸。
+下面是在 JVM 上用 Robolectric 渲染的真实界面（演示数据，无需任何 Key）。配色是深海蓝品牌色（`KoubeiTheme` 的 `dynamicColor` 默认关闭，不跟随壁纸取色）；截图在 JVM 上渲染，真机上的实际观感没有核对过。
 
 | 推荐页 | 暗色模式 | 智能体 | 规则排序兜底 |
 |---|---|---|---|
@@ -83,7 +83,7 @@ export ANDROID_HOME=/path/to/android-sdk     # 或在 local.properties 里写 sd
 - 冒烟测试发现并修复了 3 个真实缺陷（异常的分享提供方会让导入页崩溃；分享到达时不会切到导入页；提示条按钮白底白字）。
 
 **没有验证（请自行确认）**
-- **真机/模拟器运行**：沙箱没有 KVM，没有跑过真实设备。Robolectric 不等于真机（动态取色、软键盘/窗口边距、真实 AndroidKeyStore、`LocationManager` 的真实定位都没覆盖）。
+- **真机/模拟器运行**：沙箱没有 KVM，没有跑过真实设备。Robolectric 不等于真机（品牌配色在真机上是否生效、软键盘/窗口边距、真实 AndroidKeyStore、`LocationManager` 的真实定位都没覆盖）。
 - **真实高德接口**：只用 MockWebServer 验证了解析与错误映射；字段名来自官方文档，没有用真实 Key 调用过。
 - **反向地理编码（定位地址）**：高德 `/v3/geocode/regeo` 与百度 `/reverse_geocoding/v3/` 的参数、返回字段对照官方页读过（经网页抓取摘要，两页都没有示例响应）；高德页没有说明 `regeocode.formatted_address` 与 `infocode`，两家"该点没有地址"的真实返回、高德 `radius` 在 `extensions=base` 下的效果、百度国内版专页都**没有核实**；全部只用 MockWebServer 与假实现验证，**没有调用过任何真实接口**，地址质量（街道/商圈是否合理）要真机真 Key 才知道。失败时界面静默退回"当前位置"。逐项见 [DESIGN.md §3.5](docs/DESIGN.md)。
 - **真实百度接口**：同样只有 MockWebServer。端点（官方「地点检索 3.0」`/place/v3/around`）、请求参数、返回字段（含 `comment_num`）、状态码表、地理编码都对照过 lbsyun.baidu.com 的官方页面；官方页没有示例响应，评分字段是否嵌套在 `detail_info` 里按两种形状都解析，`type` 关键字筛选与 `sort_name:distance` 的实际效果没有用真实 AK 验证；真实 AK 的 IP 白名单 / SN 校验行为、配额也没有验证。逐项的核实状态见 [DESIGN.md §3.4](docs/DESIGN.md)。
