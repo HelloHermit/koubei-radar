@@ -24,6 +24,7 @@ Android App：从附近外卖/餐厅里按「口碑」筛店。Kotlin + Jetpack 
 
 ```
 ink_900   #062251   最深文字、轮廓
+line_900  #1C2A4A   插画描边
 blue_800  #0E3D7A   深位背景
 blue_700  #14305E   卡片标题
 blue_600  #2676ED   主强调（seed）

@@ -21,12 +21,15 @@ import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.isRoot
 import androidx.compose.ui.test.isSelected
 import androidx.compose.ui.test.junit4.v2.createEmptyComposeRule
+import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.test.core.app.ActivityScenario
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.espresso.IdlingPolicies
+import com.koubeiradar.app.ui.components.MascotMood
+import com.koubeiradar.app.ui.components.mascotTag
 import com.koubeiradar.app.KoubeiApplication
 import com.koubeiradar.app.MainActivity
 import com.koubeiradar.app.R
@@ -170,6 +173,10 @@ abstract class SmokeTestBase {
     protected fun string(@StringRes id: Int, vararg args: Any): String = application.getString(id, *args)
 
     protected fun shows(text: String): Boolean = compose.onAllNodesWithText(text).fetchSemanticsNodes().isNotEmpty()
+
+    /** Whether the mascot with this mood is on screen (it has no text, only a test tag). */
+    protected fun showsMascot(mood: MascotMood): Boolean =
+        compose.onAllNodesWithTag(mascotTag(mood), useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty()
 
     /** [shows] for text that is only a part of a node's text (e.g. a title and a body merged into one multi-line text). */
     protected fun showsContaining(fragment: String): Boolean =

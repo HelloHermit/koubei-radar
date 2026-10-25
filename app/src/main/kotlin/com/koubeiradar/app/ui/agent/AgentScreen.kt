@@ -60,6 +60,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.koubeiradar.agent.llm.LlmException
 import com.koubeiradar.app.R
 import com.koubeiradar.app.ui.components.KoubeiIcons
+import com.koubeiradar.app.ui.components.MascotMood
 import com.koubeiradar.app.ui.components.MessagePanel
 import com.koubeiradar.app.ui.components.NoticeCard
 import com.koubeiradar.app.ui.components.NoticeTone
@@ -152,7 +153,7 @@ private fun Conversation(
         if (state.items.isEmpty() && state.running == null) {
             item(key = "welcome") {
                 MessagePanel(
-                    icon = KoubeiIcons.Sparkles,
+                    mood = MascotMood.HAPPY,
                     title = stringResource(R.string.agent_welcome_title),
                     body = stringResource(R.string.agent_welcome_body),
                 )

@@ -5,6 +5,7 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.koubeiradar.app.R
+import com.koubeiradar.app.ui.components.MascotMood
 import com.koubeiradar.app.ui.format.Formatters
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -34,6 +35,7 @@ class SettingsSmokeTest : SmokeTestBase() {
 
         compose.onNodeWithContentDescription(string(R.string.cd_back)).performClick()
         waitForText(string(R.string.home_no_shops_title))
+        assertTrue("a quiet whale for an empty pool", showsMascot(MascotMood.SLEEPY))
         screenshot("home-empty-pool")
 
         clickText(string(R.string.home_action_reload))

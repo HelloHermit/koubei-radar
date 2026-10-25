@@ -16,7 +16,6 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -45,6 +44,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.koubeiradar.app.R
 import com.koubeiradar.app.ui.components.LoadingPanel
+import com.koubeiradar.app.ui.components.MascotMood
 import com.koubeiradar.app.ui.components.MessagePanel
 import com.koubeiradar.app.ui.components.OrderButton
 import com.koubeiradar.app.ui.components.ReasonLine
@@ -83,7 +83,7 @@ fun DetailScreen(viewModel: DetailViewModel, onBack: () -> Unit, onOrder: (Shop)
             when (val current = state) {
                 DetailUiState.Loading -> LoadingPanel(stringResource(R.string.detail_loading))
                 DetailUiState.NotFound -> MessagePanel(
-                    icon = Icons.Default.Search,
+                    mood = MascotMood.CONFUSED,
                     title = stringResource(R.string.detail_not_found_title),
                     body = stringResource(R.string.detail_not_found_body),
                 ) {

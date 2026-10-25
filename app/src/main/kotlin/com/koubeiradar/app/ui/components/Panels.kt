@@ -26,14 +26,18 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 
-/** Centred icon, title, text and actions: the shape of every empty, error and "needs something" state. */
+/**
+ * Centred picture, title, text and actions: the shape of every empty, error and "needs something" state. The picture is the
+ * mascot with the given [mood] or, without one, a plain [icon].
+ */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun MessagePanel(
-    icon: ImageVector,
     title: String,
     body: String,
     modifier: Modifier = Modifier,
+    mood: MascotMood? = null,
+    icon: ImageVector? = null,
     actions: @Composable FlowRowScope.() -> Unit = {},
 ) {
     Column(
@@ -41,7 +45,11 @@ fun MessagePanel(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Icon(icon, contentDescription = null, modifier = Modifier.size(48.dp), tint = MaterialTheme.colorScheme.primary)
+        if (mood != null) {
+            Mascot(mood)
+        } else if (icon != null) {
+            Icon(icon, contentDescription = null, modifier = Modifier.size(48.dp), tint = MaterialTheme.colorScheme.primary)
+        }
         Text(title, style = MaterialTheme.typography.titleMedium, textAlign = TextAlign.Center)
         Text(body, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
         FlowRow(
@@ -59,6 +67,7 @@ fun LoadingPanel(text: String, modifier: Modifier = Modifier) {
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
+        Mascot(MascotMood.HAPPY, width = 96.dp)
         CircularProgressIndicator()
         Text(text, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
     }

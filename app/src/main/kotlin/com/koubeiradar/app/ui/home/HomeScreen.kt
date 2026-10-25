@@ -23,7 +23,6 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.AlertDialog
@@ -66,6 +65,7 @@ import com.koubeiradar.app.settings.PoiProvider
 import com.koubeiradar.app.settings.ScoringPreset
 import com.koubeiradar.app.ui.components.KoubeiIcons
 import com.koubeiradar.app.ui.components.LoadingPanel
+import com.koubeiradar.app.ui.components.MascotMood
 import com.koubeiradar.app.ui.components.MessagePanel
 import com.koubeiradar.app.ui.components.NoticeCard
 import com.koubeiradar.app.ui.components.NoticeTone
@@ -255,7 +255,7 @@ private fun LazyListScope.content(
         HomeContent.NeedsLocation -> item(key = "needs-location") {
             val permanentlyDenied = (state.place as? PlaceState.PermissionDenied)?.permanent == true
             MessagePanel(
-                icon = Icons.Default.LocationOn,
+                mood = MascotMood.CONFUSED,
                 title = stringResource(R.string.home_needs_location_title),
                 body = stringResource(R.string.home_needs_location_body),
             ) {
@@ -268,7 +268,7 @@ private fun LazyListScope.content(
 
         is HomeContent.Failed -> item(key = "failed") {
             MessagePanel(
-                icon = Icons.Default.Warning,
+                mood = MascotMood.WORRIED,
                 title = stringResource(R.string.home_error_title),
                 body = stringResource(content.kind.messageRes(state.source.provider)),
             ) {
@@ -281,7 +281,7 @@ private fun LazyListScope.content(
 
         HomeContent.NoShops -> item(key = "no-shops") {
             MessagePanel(
-                icon = Icons.Default.Search,
+                mood = MascotMood.SLEEPY,
                 title = stringResource(R.string.home_no_shops_title),
                 body = stringResource(R.string.home_no_shops_body),
             ) {
@@ -292,7 +292,7 @@ private fun LazyListScope.content(
 
         HomeContent.NoMatch -> item(key = "no-match") {
             MessagePanel(
-                icon = Icons.Default.Search,
+                mood = MascotMood.CONFUSED,
                 title = stringResource(R.string.home_no_match_title),
                 body = stringResource(R.string.home_no_match_body, state.poolSize),
             ) {

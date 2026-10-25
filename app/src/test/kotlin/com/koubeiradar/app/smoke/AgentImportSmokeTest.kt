@@ -12,6 +12,7 @@ import androidx.compose.ui.test.performTextInput
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.koubeiradar.app.R
 import com.koubeiradar.app.platform.ImportLimits
+import com.koubeiradar.app.ui.components.MascotMood
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -42,6 +43,7 @@ class AgentImportSmokeTest : SmokeTestBase() {
         // A disabled text field does not offer the set-text action at all.
         compose.onAllNodes(hasSetTextAction()).assertCountEquals(0)
         compose.onNodeWithContentDescription(string(R.string.agent_action_send)).assertIsNotEnabled()
+        assertTrue("the welcome has a happy whale", showsMascot(MascotMood.HAPPY))
         screenshot("agent")
     }
 
