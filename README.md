@@ -3,7 +3,7 @@
 自动从附近的外卖/餐厅里筛出**口碑真正靠谱**的门店的 Android App。
 评分与筛选是确定性的、可解释的内核；**智能体（LLM Agent）**负责听懂一句话需求、阅读评价找雷点、把截图变成数据。
 
-> 状态：v0.1。能从零构建，702 条自动化测试全绿，界面已在 JVM 上用 Robolectric 真实跑起来并截图。
+> 状态：v0.1。能从零构建，708 条自动化测试全绿，界面已在 JVM 上用 Robolectric 真实跑起来并截图。
 > **尚未在真机/模拟器上运行过，也未用真实的高德 Key 与 LLM Key 联调过**——见下文「验证状态」，请先读完再用。
 
 ## 它做什么
@@ -72,8 +72,8 @@ export ANDROID_HOME=/path/to/android-sdk     # 或在 local.properties 里写 sd
 
 **已验证**
 - 从全新目录、关闭构建缓存，`./gradlew test assembleDebug` 通过（AGP 9.4.1 / Gradle 9.6 / Kotlin 2.4.21 / compileSdk 37）。
-- 702 条自动化测试：core 146（评分、筛选、评价词典）、data 156（高德解析/分页/错误映射、营业时间、演示数据、合并与并发缓存，含真实管线集成测试）、
-  agent 149（Claude 与 OpenAI 兼容两种线协议、智能体循环、提示注入防护、导入提取，含"真实工具 + 脚本化模型"的端到端测试）、
+- 708 条自动化测试：core 146（评分、筛选、评价词典）、data 156（高德解析/分页/错误映射、营业时间、演示数据、合并与并发缓存，含真实管线集成测试）、
+  agent 155（Claude 与 OpenAI 兼容两种线协议、智能体循环、提示注入防护、导入提取，含"真实工具 + 脚本化模型"的端到端测试）、
   app 251（ViewModel、设置与加密、坐标转换、分享入口、每日推荐的调度/用例/设置，以及 51 条 Robolectric 测试：真实 `MainActivity` 启动、导航、旋转重建、分享、字体放大、暗色、每日推荐的通知与 WorkManager）。
 - 独立评审（两位评审者各自在隔离副本里复现问题）又找出 10 个真实缺陷并已修复：导入器在回复被截断时丢光所有店铺、Claude 超时被 SDK 重试放大、带程度副词的差评（"不太新鲜"）被判成中性、"优惠券过期"误触发卫生红线、`LlmConfig.toString()` 会打出密钥等。
 - 冒烟测试发现并修复了 3 个真实缺陷（异常的分享提供方会让导入页崩溃；分享到达时不会切到导入页；提示条按钮白底白字）。
@@ -81,10 +81,9 @@ export ANDROID_HOME=/path/to/android-sdk     # 或在 local.properties 里写 sd
 **没有验证（请自行确认）**
 - **真机/模拟器运行**：沙箱没有 KVM，没有跑过真实设备。Robolectric 不等于真机（动态取色、软键盘/窗口边距、真实 AndroidKeyStore、`LocationManager` 的真实定位都没覆盖）。
 - **真实高德接口**：只用 MockWebServer 验证了解析与错误映射；字段名来自官方文档，没有用真实 Key 调用过。
-- **真实 LLM 接口**：Claude（官方 Java SDK 3.2.0）与 OpenAI 兼容（DeepSeek/通义/智谱/Kimi）都只在 MockWebServer 上验证了请求/响应形状；各家模型名、`max_tokens` 上限、识图能力以实际为准。Anthropic SDK（Jackson 反射）在 Android 上的运行也没有实测，开启 R8 之前需要补 keep 规则。
+- **真实 LLM 接口**：Claude（官方 Java SDK 3.2.0）与 OpenAI 兼容（DeepSeek/通义/智谱/Kimi）都只在 MockWebServer 上验证了请求/响应形状（Claude 的流式响应、流中途出错，以及取消后连接是否断开，用的是 MockWebServer 和原始 socket 服务器）；各家模型名、`max_tokens` 上限、识图能力以实际为准。Anthropic SDK（Jackson 反射）在 Android 上的运行也没有实测，开启 R8 之前需要补 keep 规则。
 - **每日推荐通知**：定时、通知显示、Doze 下的实际延迟、Android 13+ 权限弹窗都只在 JVM 上（Robolectric + WorkManager 测试驱动）验证过，没有在真机上看到过真实通知；时区变化要到下次打开 App 才会修正推荐时间。
 - **拉起外卖 App**：包名（`com.sankuai.meituan.takeoutnew`、`com.sankuai.meituan`、`me.ele`）来自常识，未在真机核对；采用"复制店名 + 按包名启动"，不依赖私有 deeplink。
-- **已知限制**：取消一次进行中的 Claude 调用后，对应的 HTTP 请求不会被立即中止（会继续跑完并计费）；修法是改用流式并在取消时关闭，需要用真实接口验证，见 DESIGN §5.5。
 - **CI**：`.github/workflows/ci.yml` 已写好但没有在 GitHub 上跑过。
 - **口碑评分的"准确度"**：这是工程启发式，没有用平台真实标注数据校准；`ScoringConfig` 暴露了全部参数。
 

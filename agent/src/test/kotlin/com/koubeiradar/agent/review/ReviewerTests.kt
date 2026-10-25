@@ -1,7 +1,5 @@
 package com.koubeiradar.agent.review
 
-import com.anthropic.client.okhttp.AnthropicOkHttpClient
-import com.anthropic.models.messages.MessageCreateParams
 import com.koubeiradar.agent.advisor.AdvisorContext
 import com.koubeiradar.agent.advisor.AdvisorToolbox
 import com.koubeiradar.agent.importer.ImportSanitizer
@@ -10,12 +8,14 @@ import com.koubeiradar.agent.llm.AnthropicLlmClient
 import com.koubeiradar.agent.llm.LlmMessage
 import com.koubeiradar.agent.llm.LlmRequest
 import com.koubeiradar.agent.llm.OpenAiCompatLlmClient
+import com.koubeiradar.agent.support.AnthropicSse
 import com.koubeiradar.agent.support.FakePool
 import com.koubeiradar.agent.support.FakeSource
 import com.koubeiradar.agent.support.args
 import com.koubeiradar.agent.support.bodyJson
 import com.koubeiradar.agent.support.jsonResponse
 import com.koubeiradar.agent.support.nextRequest
+import com.koubeiradar.agent.support.sseResponse
 import com.koubeiradar.agent.tools.ArgReader
 import com.koubeiradar.core.model.Criteria
 import com.koubeiradar.core.model.GeoPoint
@@ -29,7 +29,6 @@ import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicLong
 import kotlin.concurrent.thread
-import kotlin.test.Ignore
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -53,10 +52,19 @@ class ReviewerTests {
     // R1: does cancelling the coroutine really abort the in-flight HTTP request?
     // ---------------------------------------------------------------------------------------------------------------
 
-    /** A raw loopback server that accepts one connection, swallows the request and reports how long until the client hangs up. */
-    private class HangingServer(private val earlyResponse: String? = null) : AutoCloseable {
+    /**
+     * A raw loopback server that accepts one connection, swallows the request and reports how long until the client hangs up.
+     * [earlyResponse] is written before [requestSeen] fires; [lateResponse] only after the test counts down [releaseResponse].
+     */
+    private class HangingServer(
+        private val earlyResponse: String? = null,
+        private val lateResponse: String? = null,
+    ) : AutoCloseable {
         val socket = ServerSocket(0, 50, InetAddress.getByName("127.0.0.1"))
         val requestSeen = CountDownLatch(1)
+        val releaseResponse = CountDownLatch(1)
+        /** [System.nanoTime] at which the client's hang-up was noticed; 0 = not (yet). */
+        val closedAtNanos = AtomicLong(0)
         /** ms between [requestSeen] and the client closing the connection; -1 = still open after [WAIT_MS]. */
         val closedAfterMs = AtomicLong(-2)
         private val worker = thread(isDaemon = true) {
@@ -70,13 +78,19 @@ class ReviewerTests {
                 runCatching { while (input.available() > 0) input.read(buf) }
                 earlyResponse?.let { s.getOutputStream().apply { write(it.toByteArray()); flush() } }
                 requestSeen.countDown()
+                lateResponse?.let {
+                    releaseResponse.await(10, TimeUnit.SECONDS)
+                    s.getOutputStream().apply { write(it.toByteArray()); flush() }
+                }
                 val start = System.nanoTime()
                 try {
                     while (input.read(buf) >= 0) { /* drain until the client closes */ }
+                    closedAtNanos.set(System.nanoTime())
                     closedAfterMs.set((System.nanoTime() - start) / 1_000_000)
                 } catch (e: SocketTimeoutException) {
                     closedAfterMs.set(-1)
                 } catch (e: java.io.IOException) {
+                    closedAtNanos.set(System.nanoTime())
                     closedAfterMs.set((System.nanoTime() - start) / 1_000_000)
                 }
             } catch (_: Throwable) {
@@ -93,18 +107,24 @@ class ReviewerTests {
 
     private val tiny = LlmRequest(system = "s", messages = listOf(LlmMessage.User("hi")), maxTokens = 100)
 
+    /** Response head plus `message_start`, then silence: the model is "generating". */
+    private val streamHead = "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nConnection: close\r\n\r\n" +
+        "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"m\",\"type\":\"message\",\"role\":\"assistant\",\"model\":\"x\",\"content\":[],\"stop_reason\":null,\"stop_sequence\":null,\"usage\":{\"input_tokens\":1,\"output_tokens\":1}}}\n\n"
+
     @Test
-    @Ignore("Known limitation (DESIGN §5.5): cancelling a non-streaming Claude call does not abort the HTTP request. Fix = createStreaming + close on cancel; needs a real-API check.")
-    fun `R1a anthropic - cancelling leaves the HTTP connection open (request keeps running and billing)`() = runBlocking<Unit> {
-        HangingServer().use { server ->
+    fun `R1a anthropic - cancelling a streaming call closes the HTTP connection (the request stops billing)`() = runBlocking<Unit> {
+        HangingServer(earlyResponse = streamHead).use { server ->
             val client = AnthropicLlmClient("sk-test", baseUrl = server.url, maxRetries = 0)
             val job = launch(Dispatchers.Default) { client.complete(tiny) }
             assertTrue(server.requestSeen.await(10, TimeUnit.SECONDS))
+            Thread.sleep(500) // the client has read the headers and the first event and is now waiting inside the stream
+            val cancelledAt = System.nanoTime()
             job.cancel()
             withTimeout(5000) { job.join() }
-            val closed = server.awaitVerdict()
-            println("R1a anthropic: client closed the connection after $closed ms (-1 = never within ${HangingServer.WAIT_MS} ms)")
-            assertTrue(closed in 0..1500, "connection still open $closed ms after cancel")
+            server.awaitVerdict()
+            val closed = (server.closedAtNanos.get() - cancelledAt) / 1_000_000
+            println("R1a anthropic: client closed the connection $closed ms after the cancel")
+            assertTrue(server.closedAtNanos.get() != 0L && closed in 0..2000, "connection still open $closed ms after cancel")
         }
     }
 
@@ -123,42 +143,17 @@ class ReviewerTests {
     }
 
     @Test
-    @Ignore("Known limitation (DESIGN §5.5): cancelling a non-streaming Claude call does not abort the HTTP request. Fix = createStreaming + close on cancel; needs a real-API check.")
-    fun `R1c fix check - sdk async future cancel closes the connection`() = runBlocking<Unit> {
-        HangingServer().use { server ->
-            val sdk = AnthropicOkHttpClient.builder().apiKey("sk-test").baseUrl(server.url).maxRetries(0).build()
-            val params = MessageCreateParams.builder().model("claude-opus-5-5").maxTokens(10).addUserMessage("hi").build()
-            val future = sdk.async().messages().create(params)
+    fun `R1e anthropic - cancelled before the headers arrive, the stray request is closed the moment they do`() = runBlocking<Unit> {
+        HangingServer(lateResponse = streamHead).use { server ->
+            val client = AnthropicLlmClient("sk-test", baseUrl = server.url, maxRetries = 0)
+            val job = launch(Dispatchers.Default) { client.complete(tiny) }
             assertTrue(server.requestSeen.await(10, TimeUnit.SECONDS))
-            future.cancel(true)
+            job.cancel()
+            withTimeout(5000) { job.join() } // the caller is released at once even though the request itself cannot be aborted yet
+            server.releaseResponse.countDown()
             val closed = server.awaitVerdict()
-            println("R1c sdk async cancel: closed after $closed ms")
-            assertTrue(closed in 0..1500, "async cancel did not close the connection either: $closed")
-        }
-    }
-
-    @Test
-    fun `R1d fix check - streaming response close() drops the connection once the headers have arrived`() = runBlocking<Unit> {
-        val start = "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"m\",\"type\":\"message\",\"role\":\"assistant\",\"model\":\"x\",\"content\":[],\"stop_reason\":null,\"stop_sequence\":null,\"usage\":{\"input_tokens\":1,\"output_tokens\":1}}}\n\n"
-        val resp = "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nConnection: close\r\n\r\n" + start
-        HangingServer(resp).use { server ->
-            val sdk = AnthropicOkHttpClient.builder().apiKey("sk-test").baseUrl(server.url).maxRetries(0).build()
-            val params = MessageCreateParams.builder().model("claude-opus-5-5").maxTokens(10).addUserMessage("hi").build()
-            val streamHolder = java.util.concurrent.atomic.AtomicReference<com.anthropic.core.http.StreamResponse<*>>()
-            val reader = thread(isDaemon = true) {
-                runCatching {
-                    val st = sdk.messages().createStreaming(params)
-                    streamHolder.set(st)
-                    st.stream().iterator().let { while (it.hasNext()) it.next() }
-                }
-            }
-            assertTrue(server.requestSeen.await(10, TimeUnit.SECONDS))
-            Thread.sleep(500)
-            val t0 = System.nanoTime()
-            streamHolder.get().close()
-            val closed = server.awaitVerdict()
-            println("R1d streaming close(): server saw EOF after $closed ms (reader alive=${reader.isAlive})")
-            assertTrue(closed in 0..1500, "streaming close did not drop the connection: $closed")
+            println("R1e anthropic: closed $closed ms after the late headers")
+            assertTrue(closed in 0..2000, "the late stream was not closed: $closed")
         }
     }
 
@@ -267,16 +262,23 @@ class ReviewerTests {
     }
 
     // ---------------------------------------------------------------------------------------------------------------
-    // R6: Anthropic wire checks: tool schemas survive; non-streaming with big max_tokens
+    // R6: Anthropic wire checks: tool schemas survive; big max_tokens
     // ---------------------------------------------------------------------------------------------------------------
 
-    private val okMessage = """{"id":"msg_1","type":"message","role":"assistant","model":"claude-opus-5-5","content":[{"type":"text","text":"ok"}],"stop_reason":"end_turn","stop_sequence":null,"usage":{"input_tokens":3,"output_tokens":2}}"""
+    private val okStream = listOf(
+        "message_start" to """{"type":"message_start","message":{"id":"msg_1","type":"message","role":"assistant","model":"claude-opus-5-5","content":[],"stop_reason":null,"stop_sequence":null,"usage":{"input_tokens":3,"output_tokens":1}}}""",
+        "content_block_start" to """{"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}""",
+        "content_block_delta" to """{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"ok"}}""",
+        "content_block_stop" to """{"type":"content_block_stop","index":0}""",
+        "message_delta" to """{"type":"message_delta","delta":{"stop_reason":"end_turn","stop_sequence":null},"usage":{"output_tokens":2}}""",
+        "message_stop" to """{"type":"message_stop"}""",
+    ).joinToString("") { (type, data) -> "event: $type\ndata: $data\n\n" }
 
     @Test
     fun `R6a every real tool schema reaches the wire unchanged`() = runBlocking<Unit> {
         MockWebServer().use { server ->
             server.start()
-            server.enqueue(jsonResponse(okMessage))
+            server.enqueue(sseResponse(okStream))
             val box = AdvisorToolbox(FakePool(emptyList()), ShopSelector(), AdvisorContext(null, Criteria(), null))
             val specs = box.tools.map { it.spec } + com.koubeiradar.agent.importer.ImportPrompts.REPORT_SHOPS
             AnthropicLlmClient("sk-x", baseUrl = server.url("/").toString()).complete(LlmRequest("sys", listOf(LlmMessage.User("hi")), specs, 4000))
@@ -292,10 +294,10 @@ class ReviewerTests {
     }
 
     @Test
-    fun `R6b max_tokens 64000 non-streaming still goes out`() = runBlocking<Unit> {
+    fun `R6b max_tokens 64000 goes out (streaming has no non-streaming size limit)`() = runBlocking<Unit> {
         MockWebServer().use { server ->
             server.start()
-            server.enqueue(jsonResponse(okMessage))
+            server.enqueue(sseResponse(okStream))
             val r = runCatching {
                 AnthropicLlmClient("sk-x", baseUrl = server.url("/").toString(), maxTokens = 64000, effort = "max")
                     .complete(LlmRequest("s", listOf(LlmMessage.User("hi")), emptyList(), 64000))
@@ -351,18 +353,17 @@ class ReviewerTests {
 
     @Test
     fun `R9 unusual but valid Anthropic responses`() = runBlocking<Unit> {
-        fun msg(content: String, stop: String) =
-            """{"id":"m","type":"message","role":"assistant","model":"claude-opus-5-5","content":$content,"stop_reason":$stop,"stop_sequence":null,"usage":{"input_tokens":3,"output_tokens":2}}"""
+        fun msg(content: String, stop: String?) = AnthropicSse.stream(content, stop)
         val variants = listOf(
-            "unknown server block" to msg("""[{"type":"server_tool_use","id":"srv_1","name":"web_search","input":{"query":"x"}},{"type":"text","text":"hi"}]""", "\"end_turn\""),
-            "null stop_reason + tool_use" to msg("""[{"type":"tool_use","id":"toolu_1","name":"list_candidates","input":{}}]""", "null"),
-            "pause_turn" to msg("""[{"type":"text","text":"partial"}]""", "\"pause_turn\""),
-            "empty content" to msg("[]", "\"end_turn\""),
+            "unknown server block" to msg("""[{"type":"server_tool_use","id":"srv_1","name":"web_search","input":{"query":"x"}},{"type":"text","text":"hi"}]""", "end_turn"),
+            "null stop_reason + tool_use" to msg("""[{"type":"tool_use","id":"toolu_1","name":"list_candidates","input":{}}]""", null),
+            "pause_turn" to msg("""[{"type":"text","text":"partial"}]""", "pause_turn"),
+            "empty content" to msg("[]", "end_turn"),
         )
         for ((label, body) in variants) {
             MockWebServer().use { server ->
                 server.start()
-                server.enqueue(jsonResponse(body)); server.enqueue(jsonResponse(okMessage))
+                server.enqueue(sseResponse(body)); server.enqueue(sseResponse(okStream))
                 val client = AnthropicLlmClient("sk-x", baseUrl = server.url("/").toString())
                 val first = runCatching { client.complete(tiny) }
                 val second = first.getOrNull()?.let { resp ->
@@ -371,6 +372,7 @@ class ReviewerTests {
                     }
                 }
                 println("R9 [$label] first=${first.map { "${it.stopReason} text='${it.text}' calls=${it.toolCalls.size}" }} second=${second?.map { "ok" }}")
+                assertTrue(first.isSuccess && second?.isSuccess == true, "R9 [$label] first=$first second=$second")
             }
         }
     }

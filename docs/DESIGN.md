@@ -203,7 +203,10 @@ UI 与智能体共享的内存池 = **附近店铺（来自 ShopSource）∪ 导
 - `stop_reason`：`tool_use`→TOOL_USE，`end_turn`→END_TURN，`max_tokens`→MAX_TOKENS，`refusal`→抛 `LlmException(REFUSAL)`。
 - SDK 异常 → `LlmException`：401/403→AUTH，429→RATE_LIMIT，5xx/529→SERVER，400→BAD_REQUEST，IO→NETWORK。
 - 认证：SDK 3.x 默认把 key 放进 `Authorization: Bearer`，这里显式设置 `X-Api-Key`（经典头，所有官方端点与兼容网关都认），SDK 见到已有该头就不再加 `Authorization`。
-- 取消：实测 `runInterruptible` 唤不醒阻塞中的 socket 读，所以用 `awaitBlocking`——调用方立刻恢复，工作线程被中断（最迟在超时后退出）。
+- **流式**：`createStreaming`，由 SDK 的 `MessageAccumulator` 在本地重建完整 `Message`（thinking 的 `signature` 来自 `signature_delta`，`tool_use.input` 由各个 `input_json_delta` 拼成完整 JSON），之后的映射与回放和非流式时完全一样。不启用 `eager_input_streaming`（工具入参很小，且它会关掉 API 侧的入参校验）；`maxTokens` 默认值不变。
+- **流中途的失败**：HTTP 状态在流开始前就已确定（401/429/5xx 照旧）；流开始后的 `error` 事件按 `error.type` 映射（`overloaded_error`/`api_error`→SERVER，`rate_limit_error`→RATE_LIMIT，`authentication_error`/`permission_error`→AUTH，`invalid_request_error` 等→BAD_REQUEST，其余 OTHER，`httpStatus` 为空，因为 HTTP 状态是 200）；连接中断、或流没有 `message_stop` 就结束→NETWORK；200 却一个事件都没有（Base URL 填错、网关忽略 `stream`）→"无法识别"。`maxRetries` 只管请求发出到响应头到达之前（429/5xx/连接失败）；流开始后出错不重试，否则模型会重新生成并重复计费。整体期限 `timeoutSeconds` 仍是外层的 `withTimeout`，到期同样关闭流。
+- **取消**：取消协程时 `StreamResponse.close()` 关闭连接（本机环回实测约 1 ms；OkHttp 最多先尝试 100 ms 排空当前块），服务端随即停止生成。**响应头到达之前不可中止**：连接、TLS、写请求、等待首个响应字节、SDK 的重试退避——工作线程虽被中断，但阻塞的 socket 读不理会中断（实测 `runInterruptible` 唤不醒它），SDK 也没有提供取消请求的句柄。所以 `awaitBlocking` 让调用方立即恢复，这个"游离"请求活到连接/读超时；若服务端先应答，响应头一到流就被立刻关闭而不读取，但此时服务端可能已开始生成并计费。流式下响应头通常在请求被接受后很快到达，这段窗口很短。
+- **流式的未验证部分**：只在 MockWebServer 和原始 socket 服务器上验证过，没有对真实 API 或网关实测；SDK 的累加器要求 `message_start` 带 `usage`、每个 `tool_use` 至少有一个 `input_json_delta`（官方 API 满足；不规范的兼容网关会被报为"无法识别"，非流式时缺 `usage` 是被容忍的）。
 - 输出预算 = `min(请求的 maxTokens, 客户端上限)`；一轮因 `max_tokens` 被截断时不执行其中的工具；单轮最多执行 12 个工具调用。
 - `baseUrl` 可覆盖（网关/代理；也用于 MockWebServer 测试）。
 - 未启用服务端 `fallbacks`：本场景（餐饮推荐）几乎不会触发安全分类器，拒绝时按 `REFUSAL` 向上抛，由 UI 回退到确定性排序；需要时可参照 claude-api 文档加上。
@@ -265,10 +268,10 @@ UI 与智能体共享的内存池 = **附近店铺（来自 ShopSource）∪ 导
 |---|---|---|
 | `:core` | 评分的性质测试（单调性、边界、null 处理、红线词与否定词、满分少评、权重归一、预设）+ 筛选语义（Criteria 每个字段与 null 规则、并列排序、垃圾输入不出 NaN、确定性） | 146 |
 | `:data` | MockWebServer 覆盖高德正常 / `[]` 空字段 / 翻页上限 / 各 infocode / 超时 / 畸形 JSON / 取消；营业时间（含跨午夜）；演示数据样本；仓库合并、缓存 TTL、并发；**集成：演示数据 → 候选池 → 真实 `ShopSelector`，样本结论与 §3.2 表一致** | 156 |
-| `:agent` | 假 LLM 脚本化跑完整循环（并行工具、提醒一次、兜底、未知 shop_id 纠错、提示注入）；两个客户端用 MockWebServer 验证线协议（Claude thinking 块回放、`is_error`、工具结果合并、OpenAI `arguments` 字符串）；**端到端：真实工具 + 真实候选池 + 真实打分器 + 脚本化模型** | 149 |
+| `:agent` | 假 LLM 脚本化跑完整循环（并行工具、提醒一次、兜底、未知 shop_id 纠错、提示注入）；两个客户端用 MockWebServer 验证线协议（Claude 为 SSE 流：thinking 签名与分片入参重组、流中途 `error`、断流、取消即断开连接，以及 thinking 块回放、`is_error`、工具结果合并；OpenAI `arguments` 字符串）；**端到端：真实工具 + 真实候选池 + 真实打分器 + 脚本化模型** | 155 |
 | `:app` | ViewModel（假服务）、设置与加密、坐标转换、分享入口与限额、持久化；**Robolectric 冒烟测试**：真实 `MainActivity`/`AppContainer` 启动到首帧、各标签与详情/设置导航、旋转重建、分享入口、无 Key 引导、权限被拒、1.5 倍字体、暗色，并产出截图；**每日推荐**：`nextTrigger` 边界（严格晚于、周末、跨月年、夏令时）、用例决定（无位置/无店/避雷/文案/重试）、设置持久化与旧版本兼容、WorkManager 请求与通知（Robolectric） | 251 |
 
-冒烟测试在 JVM 上跑，**不等于真机**：真实 AndroidKeyStore、软键盘/窗口边距、真实定位、动态取色都没有覆盖。它们发现并修复了 3 个真实缺陷（异常的分享提供方让导入页崩溃；分享到达时已存活的导入页不会切换标签；提示条按钮白底白字），评审中又加固了持久化写线程（任何异常都不会让它静默停止）；两位独立评审者另外复现并修复了 10 个缺陷（见 README），其回归测试在 `reviewer/`、`review/` 包下，其中 2 条标为 `@Ignore` 的是已知限制：取消进行中的非流式 Claude 调用不会中止 HTTP 请求。
+冒烟测试在 JVM 上跑，**不等于真机**：真实 AndroidKeyStore、软键盘/窗口边距、真实定位、动态取色都没有覆盖。它们发现并修复了 3 个真实缺陷（异常的分享提供方让导入页崩溃；分享到达时已存活的导入页不会切换标签；提示条按钮白底白字），评审中又加固了持久化写线程（任何异常都不会让它静默停止）；两位独立评审者另外复现并修复了 10 个缺陷（见 README），其回归测试在 `reviewer/`、`review/` 包下；其中 R1a/R1e 验证取消 Claude 调用会真的断开连接（响应头之前的限制见 §5.5）。
 
 未验证：真实高德/Claude/OpenAI 兼容接口（只有 MockWebServer）、Anthropic SDK 在 Android 上的运行与 R8 规则、外卖 App 包名、评分对真实数据的校准。
 
