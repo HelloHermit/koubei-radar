@@ -307,6 +307,19 @@ UI 与智能体共享的内存池 = **附近店铺（来自 ShopSource）∪ 导
 - **权限与渠道**：打开开关时若没有通知权限，先弹说明再请求系统权限；被拒则开关保持关闭并给出"打开系统设置"。已开启后权限或渠道被用户关掉，设置页会提示，通知不会静默丢失。渠道 `meal_recommendations`（"每日推荐"，默认重要性）在启动时创建。
 - **隐私**：上次的位置只在本机；推荐在本机计算；没有任何新的数据发给 AI 服务商（使用真实数据时，到点会像打开主页一样把这个位置发给所选的地图服务（高德或百度））。
 
+### 7.2 Release build / R8
+
+`release` 开启了 `isMinifyEnabled` 与 `isShrinkResources`（`app/build.gradle.kts`）；没有 keystore，所以产物 `app-release-unsigned.apk` 是**未签名**的，安装前需自行签名。规则在 `app/proguard-rules.pro`，只加了确实需要的：
+
+- **依赖自带的规则（AGP 自动合并，没有重复写）**：`anthropic-java-core`（`META-INF/proguard`：Jackson 注解成员、`kotlin.Metadata`、枚举 `values()`、`TypeReference`）、`kotlinx-serialization-core`（`@Serializable` 类的 `Companion` / `serializer()` / `INSTANCE` 与 `$$serializer.descriptor`）、OkHttp（可选平台的 `-dontwarn`）、WorkManager（`ListenableWorker` 的构造函数与类名）、DataStore、`kotlinx-coroutines-android`。Jackson、Okio、jackson-module-kotlin 的 jar 不带规则。
+- **我们加的**：`-keepattributes Signature,*Annotation*,InnerClasses,EnclosingMethod`（Jackson 与 Kotlin 反射在运行时读）；`-keep class com.anthropic.** { *; }`（SDK 的响应/流事件类由 Jackson 反射绑定，SDK 自带规则只保留带注解的成员，我们没法在真机上测出哪些成员重要，所以整包保留且不改名，代价是 APK 变大）；`-keep class com.fasterxml.jackson.annotation.**` 与 `kotlin.Metadata`。
+- **`-dontwarn`**（取自 R8 生成的 `missing_rules.txt`，只有它列出的三条）：`com.google.auto.value.AutoValue`（OpenTelemetry API 引用的注解处理器注解）、`java.lang.reflect.AnnotatedType` / `AnnotatedParameterizedType`（Android API 里没有；只有 SDK 的 structured outputs（由类生成 JSON Schema）会用到，本应用不用，`AnthropicLlmClient` 只设置 `OutputConfig.effort`）。
+- **我们自己的代码**：`MealWorker`（WorkManager 按类名反射创建）由 WorkManager 自带规则保留；`@Serializable` 类（`Shop`、`Criteria`、导航路由、`SavedPlace` 等）由 kotlinx.serialization 的规则保留；Manifest 里声明的组件 R8 自动保留。没有给应用代码另加规则。
+
+已验证（只是构建产物层面）：`:app:assembleRelease` 成功；`mapping.txt` 中 SDK 的真实类全部未改名（只有 D8 生成的合成 lambda 被改名）；`AnthropicLlmClient` 在 dex 中存在但被改名（它不被反射访问）；`Shop` 等 10 个 `$$serializer`、各 `Companion.serializer()`、路由对象的 `INSTANCE` 出现在 `seeds.txt`；`MealWorker` 及其 `(Context, WorkerParameters)` 构造函数在 `seeds.txt` 与 dex 里。
+
+**未验证**：没有在设备或模拟器上运行过 release 包。混淆后 Jackson 对 SDK 的反序列化、流式事件、kotlinx.serialization 的导航参数与 DataStore 持久化、WorkManager 实例化 `MealWorker` 都只是"按各库的规则推断应该能工作"。Jackson databind 自身的类会被改名/压缩，依赖 SDK 自带规则。出现运行时问题时，先对照 `mapping.txt` 与 `usage.txt`，再调整规则。
+
 ## 8. 合规与风险
 
 - **数据来源**：只用高德 / 百度的官方 API 与用户主动提供的内容。GitHub 上现有的美团/点评爬虫（见 RESEARCH.md）多为"仅限学习交流、禁止商用"，依赖逆向与反反爬，随时失效且违反平台条款，**不采用**。
@@ -326,11 +339,11 @@ UI 与智能体共享的内存池 = **附近店铺（来自 ShopSource）∪ 导
 
 冒烟测试在 JVM 上跑，**不等于真机**：真实 AndroidKeyStore、软键盘/窗口边距、真实定位、动态取色都没有覆盖。它们发现并修复了 3 个真实缺陷（异常的分享提供方让导入页崩溃；分享到达时已存活的导入页不会切换标签；提示条按钮白底白字），评审中又加固了持久化写线程（任何异常都不会让它静默停止）；两位独立评审者另外复现并修复了 10 个缺陷（见 README），其回归测试在 `reviewer/`、`review/` 包下；其中 R1a/R1e 验证取消 Claude 调用会真的断开连接（响应头之前的限制见 §5.5）。
 
-未验证：真实高德/百度/Claude/OpenAI 兼容接口（只有 MockWebServer；百度 3.0 圆形检索的评分字段嵌套形状（页面无示例）、`type` 作关键字筛选与 `sort_name:distance` 的实际效果、每页实际条数、地理编码无结果的返回、真实 AK 的 IP 白名单/SN 限制，见 §3.4）、Anthropic SDK 在 Android 上的运行与 R8 规则、外卖 App 包名、评分对真实数据的校准。
+未验证：真实高德/百度/Claude/OpenAI 兼容接口（只有 MockWebServer；百度 3.0 圆形检索的评分字段嵌套形状（页面无示例）、`type` 作关键字筛选与 `sort_name:distance` 的实际效果、每页实际条数、地理编码无结果的返回、真实 AK 的 IP 白名单/SN 限制，见 §3.4）、Anthropic SDK 在 Android 上的运行、R8 规则在真机上的效果（§7.2，只检查过 R8 输出）、外卖 App 包名、评分对真实数据的校准。
 
 ## 10. 路线图
 
 1. 评价趋势（近 30 天 vs 历史）、店铺历史快照对比；
 2. 端侧 GUI 智能体（无障碍服务，参考 Mobilerun Portal / OpenGUI 的做法）自动读取外卖 App 列表，仍以"用户本机、本人账号、人工确认"为前提；
 3. ~~百度 POI 适配器~~（已做，§3.4）；腾讯位置服务的 POI 没有评分，不做；
-4. R8 混淆规则（Anthropic SDK / Jackson）。
+4. ~~R8 混淆规则（Anthropic SDK / Jackson）~~（已开启，§7.2；仍需在真机上验证）。

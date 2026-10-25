@@ -22,8 +22,11 @@ android {
 
     buildTypes {
         release {
-            // R8 needs keep rules for the Anthropic SDK (Jackson reflection) before this can be turned on.
-            isMinifyEnabled = false
+            // R8 shrinks, optimizes and obfuscates the release build; keep rules live in proguard-rules.pro (see docs/DESIGN.md,
+            // "Release build / R8"). They have been checked against the R8 output only, not on a device or emulator.
+            // The release APK stays unsigned: there is no keystore in the repository, so sign it yourself before installing.
+            isMinifyEnabled = true
+            isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
     }
