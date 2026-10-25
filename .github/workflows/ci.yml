@@ -21,8 +21,11 @@ jobs:
           distribution: temurin
           java-version: 21
 
-      # Installs the command-line tools, accepts the licences and exports ANDROID_HOME.
+      # Exports ANDROID_HOME and accepts the licences. Its default package list ("tools platform-tools") fails because the
+      # "tools" package no longer exists, so it installs nothing itself; the pieces the build needs come from the next step.
       - uses: android-actions/setup-android@v3
+        with:
+          packages: ""
 
       - name: Install the SDK pieces the build needs
         run: sdkmanager "platforms;android-37.0" "build-tools;36.0.0"
