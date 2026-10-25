@@ -13,6 +13,7 @@ import com.koubeiradar.app.settings.DataStoreSettingsRepository
 import com.koubeiradar.app.settings.InputProblem
 import com.koubeiradar.app.settings.InputRules
 import com.koubeiradar.app.settings.MealNotificationSettings
+import com.koubeiradar.app.settings.PoiProvider
 import com.koubeiradar.app.settings.SavedPlace
 import com.koubeiradar.app.settings.ScoringPreset
 import com.koubeiradar.app.settings.Secret
@@ -80,6 +81,7 @@ class SecretTest {
         val secret = Secret("sk-ant-api03-abcdefghijkl")
         assertFalse("abcdef" in secret.toString())
         assertFalse("abcdef" in AppSettings(amapKey = secret).toString())
+        assertFalse("abcdef" in AppSettings(baiduKey = secret, poiProvider = PoiProvider.BAIDU).toString())
         assertEquals("ijkl", secret.tail)
         assertEquals("", Secret("short-key").tail)
         assertFalse(Secret.EMPTY.isSet)
@@ -141,15 +143,32 @@ class InputRulesTest {
         assertEquals("", ok(checkSetting(SettingField.OPENAI_VISION_MODEL, "")))
         assertEquals(InputProblem.EMPTY, problem(checkSetting(SettingField.ANTHROPIC_MODEL, "")))
         assertEquals("k1", ok(checkSetting(SettingField.AMAP_KEY, " k1 ")))
+        assertEquals("ak1", ok(checkSetting(SettingField.BAIDU_KEY, " ak1 \n")))
+        assertEquals(InputProblem.EMPTY, problem(checkSetting(SettingField.BAIDU_KEY, "  ")))
+        assertEquals(InputProblem.CONTAINS_WHITESPACE, problem(checkSetting(SettingField.BAIDU_KEY, "a b")))
+        assertEquals(InputProblem.NOT_PLAIN_ASCII, problem(checkSetting(SettingField.BAIDU_KEY, "ａｋ")))
     }
 }
 
 class AppSettingsTest {
     @Test
-    fun `amap is used only with a key and while demo data is not forced`() {
-        assertFalse(AppSettings().usesAmap)
-        assertTrue(AppSettings(amapKey = Secret("k")).usesAmap)
-        assertFalse(AppSettings(amapKey = Secret("k"), useDemoData = true).usesAmap)
+    fun `real data is used only with a key of the selected provider and while demo data is not forced`() {
+        assertNull(AppSettings().activePoi)
+        assertEquals(PoiProvider.AMAP, AppSettings(amapKey = Secret("k")).activePoi)
+        assertNull(AppSettings(amapKey = Secret("k"), useDemoData = true).activePoi)
+        assertFalse(AppSettings(amapKey = Secret("k"), useDemoData = true).usesRealData)
+
+        val baidu = AppSettings(baiduKey = Secret("ak"), poiProvider = PoiProvider.BAIDU)
+        assertEquals(PoiProvider.BAIDU, baidu.activePoi)
+        assertEquals(Secret("ak"), baidu.poiKey)
+        assertNull(baidu.copy(useDemoData = true).activePoi)
+    }
+
+    @Test
+    fun `a key of the other provider does not count`() {
+        assertNull(AppSettings(amapKey = Secret("k"), poiProvider = PoiProvider.BAIDU).activePoi)
+        assertNull(AppSettings(baiduKey = Secret("ak"), poiProvider = PoiProvider.AMAP).activePoi)
+        assertEquals(PoiProvider.AMAP, AppSettings().poiProvider, "amap stays the default")
     }
 
     @Test
@@ -174,9 +193,11 @@ class AppSettingsTest {
     fun `fields are written to the right place`() {
         val settings = AppSettings()
             .with(SettingField.AMAP_KEY, "amap")
+            .with(SettingField.BAIDU_KEY, "baidu")
             .with(SettingField.ANTHROPIC_MODEL, "claude-sonnet-5-5")
             .with(SettingField.OPENAI_BASE_URL, "https://x.example.com")
         assertEquals("amap", settings.amapKey.value)
+        assertEquals("baidu", settings.baiduKey.value)
         assertEquals("claude-sonnet-5-5", settings.anthropic.model)
         assertEquals("https://x.example.com", settings.openAi.baseUrl)
     }
@@ -201,6 +222,8 @@ class DataStoreSettingsRepositoryTest {
         val repository = repository(file, key)
         val saved = AppSettings(
             amapKey = Secret("amap-key-0123456789"),
+            baiduKey = Secret("baidu-ak-0123456789"),
+            poiProvider = PoiProvider.BAIDU,
             useDemoData = true,
             provider = LlmProvider.OPENAI_COMPATIBLE,
             criteria = Criteria(minRating = 4.3, includeKeywords = setOf("川菜"), platforms = setOf(Platform.ELEME), onlyOpen = true),
@@ -214,6 +237,7 @@ class DataStoreSettingsRepositoryTest {
         assertEquals(saved, repository.settings.first())
         val onDisk = file.readBytes().toString(Charsets.ISO_8859_1)
         assertFalse("amap-key-0123456789" in onDisk)
+        assertFalse("baidu-ak-0123456789" in onDisk)
         assertFalse("sk-openai-secret-value" in onDisk)
     }
 
@@ -252,6 +276,44 @@ class DataStoreSettingsRepositoryTest {
         assertEquals(saved, repository.settings.first())
         repository.update { it.copy(meals = it.meals.copy(lunchEnabled = false)) }
         assertEquals(saved.meals.copy(lunchEnabled = false), repository.settings.first().meals, "one change leaves the rest alone")
+    }
+
+    @Test
+    fun `settings stored before the baidu provider existed read as amap with no baidu key`() = runBlocking<Unit> {
+        val key = newKey()
+        val dataStore = PreferenceDataStoreFactory.create(scope = scope) { File(folder.root, "pre-baidu.preferences_pb") }
+        dataStore.edit {
+            it[stringPreferencesKey("amap_key_sealed")] = SecretBox { key }.encrypt("amap-key-0123456789")
+            it[booleanPreferencesKey("demo_banner_dismissed")] = true
+        }
+        val repository = DataStoreSettingsRepository(dataStore, SecretBox { key }, Dispatchers.Unconfined)
+
+        val settings = repository.settings.first()
+
+        assertEquals(PoiProvider.AMAP, settings.poiProvider)
+        assertEquals(Secret.EMPTY, settings.baiduKey)
+        assertEquals(PoiProvider.AMAP, settings.activePoi, "an existing Amap key keeps working")
+        assertEquals("amap-key-0123456789", settings.amapKey.value)
+        assertTrue(settings.demoBannerDismissed)
+    }
+
+    @Test
+    fun `an unknown stored provider falls back to amap and each key survives a provider switch`() = runBlocking<Unit> {
+        val key = newKey()
+        val dataStore = PreferenceDataStoreFactory.create(scope = scope) { File(folder.root, "provider.preferences_pb") }
+        dataStore.edit { it[stringPreferencesKey("poi_provider")] = "TENCENT" }
+        val repository = DataStoreSettingsRepository(dataStore, SecretBox { key }, Dispatchers.Unconfined)
+        assertEquals(PoiProvider.AMAP, repository.settings.first().poiProvider)
+
+        repository.update { it.with(SettingField.AMAP_KEY, "amap-key").with(SettingField.BAIDU_KEY, "baidu-ak") }
+        repository.update { it.copy(poiProvider = PoiProvider.BAIDU) }
+        assertEquals(PoiProvider.BAIDU, repository.settings.first().poiProvider)
+        repository.update { it.copy(poiProvider = PoiProvider.AMAP) }
+
+        val settings = repository.settings.first()
+        assertEquals(PoiProvider.AMAP, settings.poiProvider)
+        assertEquals("amap-key", settings.amapKey.value)
+        assertEquals("baidu-ak", settings.baiduKey.value)
     }
 
     @Test

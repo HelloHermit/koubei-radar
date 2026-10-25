@@ -62,6 +62,7 @@ import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.koubeiradar.app.R
 import com.koubeiradar.app.service.PlaceState
+import com.koubeiradar.app.settings.PoiProvider
 import com.koubeiradar.app.settings.ScoringPreset
 import com.koubeiradar.app.ui.components.KoubeiIcons
 import com.koubeiradar.app.ui.components.LoadingPanel
@@ -70,8 +71,10 @@ import com.koubeiradar.app.ui.components.NoticeCard
 import com.koubeiradar.app.ui.components.NoticeTone
 import com.koubeiradar.app.ui.components.ScoringPresetSelector
 import com.koubeiradar.app.ui.components.ShopCard
+import com.koubeiradar.app.ui.addressNeedsKeyRes
 import com.koubeiradar.app.ui.components.asString
 import com.koubeiradar.app.ui.components.findActivity
+import com.koubeiradar.app.ui.components.labelRes
 import com.koubeiradar.app.ui.criteria.CriteriaSheet
 import com.koubeiradar.app.ui.criteria.chips
 import com.koubeiradar.app.ui.criteria.isUnrestricted
@@ -139,6 +142,7 @@ fun HomeScreen(
         AddressDialog(
             state = dialog,
             canGeocode = state.canGeocode,
+            poiProvider = state.poiProvider,
             onSubmit = viewModel::submitAddress,
             onUseCurrent = {
                 viewModel.closeAddressDialog()
@@ -228,7 +232,7 @@ private fun LazyListScope.content(
             }
             (state.load as? LoadState.Failed)?.let { failed ->
                 item(key = "stale-error") {
-                    NoticeCard(text = stringResource(failed.kind.messageRes()), tone = NoticeTone.ERROR, icon = Icons.Default.Warning) {
+                    NoticeCard(text = stringResource(failed.kind.messageRes(state.source.provider)), tone = NoticeTone.ERROR, icon = Icons.Default.Warning) {
                         TextButton(onClick = onRetry) { Text(stringResource(R.string.action_retry)) }
                     }
                 }
@@ -266,7 +270,7 @@ private fun LazyListScope.content(
             MessagePanel(
                 icon = Icons.Default.Warning,
                 title = stringResource(R.string.home_error_title),
-                body = stringResource(content.kind.messageRes()),
+                body = stringResource(content.kind.messageRes(state.source.provider)),
             ) {
                 Button(onClick = onRetry) { Text(stringResource(R.string.action_retry)) }
                 if (content.kind == ShopSourceException.Kind.AUTH) {
@@ -331,7 +335,7 @@ private fun PlaceRow(state: HomeUiState, onEditPlace: () -> Unit, onOpenSettings
         if (state.locating) LinearProgressIndicator(Modifier.fillMaxWidth())
         AssistChip(
             onClick = onOpenSettings,
-            label = { Text(stringResource(if (state.source == SourceKind.AMAP) R.string.home_source_amap else R.string.home_source_demo)) },
+            label = { Text(stringResource(state.source.provider?.labelRes() ?: R.string.home_source_demo)) },
         )
     }
 }
@@ -355,6 +359,7 @@ private fun CriteriaRow(state: HomeUiState, onEdit: () -> Unit) {
 private fun AddressDialog(
     state: AddressDialogState,
     canGeocode: Boolean,
+    poiProvider: PoiProvider,
     onSubmit: (String) -> Unit,
     onUseCurrent: () -> Unit,
     onOpenSettings: () -> Unit,
@@ -386,7 +391,7 @@ private fun AddressDialog(
                     )
                     if (state.searching) LinearProgressIndicator(Modifier.fillMaxWidth())
                 } else {
-                    Text(stringResource(R.string.home_address_needs_key), style = MaterialTheme.typography.bodyMedium)
+                    Text(stringResource(poiProvider.addressNeedsKeyRes()), style = MaterialTheme.typography.bodyMedium)
                 }
             }
         },

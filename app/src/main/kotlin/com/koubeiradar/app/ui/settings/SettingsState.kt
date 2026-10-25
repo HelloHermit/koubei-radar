@@ -4,6 +4,7 @@ import com.koubeiradar.agent.llm.LlmProvider
 import com.koubeiradar.agent.llm.ProviderPreset
 import com.koubeiradar.app.settings.Meal
 import com.koubeiradar.app.settings.MealNotificationSettings
+import com.koubeiradar.app.settings.PoiProvider
 import com.koubeiradar.app.settings.SavedPlace
 import com.koubeiradar.app.settings.ScoringPreset
 import com.koubeiradar.app.settings.Secret
@@ -21,7 +22,9 @@ data class KeyStatus(val isSet: Boolean, val tail: String) {
 
 data class SettingsUiState(
     val loaded: Boolean = false,
+    val poiProvider: PoiProvider = PoiProvider.AMAP,
     val amapKey: KeyStatus = KeyStatus.NOT_SET,
+    val baiduKey: KeyStatus = KeyStatus.NOT_SET,
     val useDemoData: Boolean = false,
     val provider: LlmProvider = LlmProvider.ANTHROPIC,
     val anthropicKey: KeyStatus = KeyStatus.NOT_SET,

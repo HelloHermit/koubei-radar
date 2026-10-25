@@ -153,9 +153,9 @@ class FakeGeocoder(var result: GeoPoint? = null, var failure: Exception? = null)
 }
 
 class FakeDataSources(var geocoder: FakeGeocoder? = null) : DataSources {
-    override fun sourceFor(settings: AppSettings): ShopSource = FakeSource(if (settings.usesAmap) "amap" else "demo")
+    override fun sourceFor(settings: AppSettings): ShopSource = FakeSource(settings.activePoi?.name?.lowercase() ?: "demo")
 
-    override fun geocoderFor(settings: AppSettings): Geocoder? = geocoder.takeIf { settings.usesAmap }
+    override fun geocoderFor(settings: AppSettings): Geocoder? = geocoder.takeIf { settings.usesRealData }
 }
 
 class FakeLocation(var permission: Boolean = false, var result: LocationResult = LocationResult.Unavailable) : LocationService {

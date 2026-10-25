@@ -87,10 +87,10 @@ internal class AmapApi(
     }
 }
 
-private class RawReply(val code: Int, val body: String)
+internal class RawReply(val code: Int, val body: String)
 
 /** Runs [request] on OkHttp's own threads; cancelling the calling coroutine cancels the HTTP call. */
-private suspend fun OkHttpClient.fetch(request: Request): RawReply = suspendCancellableCoroutine { continuation ->
+internal suspend fun OkHttpClient.fetch(request: Request): RawReply = suspendCancellableCoroutine { continuation ->
     val call = newCall(request)
     continuation.invokeOnCancellation { call.cancel() }
     call.enqueue(object : Callback {

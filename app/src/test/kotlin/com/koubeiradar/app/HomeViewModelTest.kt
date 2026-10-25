@@ -5,6 +5,7 @@ import com.koubeiradar.app.service.DEMO_CENTER
 import com.koubeiradar.app.service.PlaceState
 import com.koubeiradar.app.service.PlaceStore
 import com.koubeiradar.app.settings.AppSettings
+import com.koubeiradar.app.settings.PoiProvider
 import com.koubeiradar.app.settings.SavedPlace
 import com.koubeiradar.app.settings.ScoringPreset
 import com.koubeiradar.app.settings.Secret
@@ -368,6 +369,51 @@ class HomeViewModelTest {
 
         assertEquals(listOf("demo", "amap"), store.refreshes.map { it.source.id })
         assertEquals(SourceKind.AMAP, viewModel.uiState.value.source)
+    }
+
+    @Test
+    fun `the baidu provider searches with its own key, names itself and can geocode`() = runTest {
+        places.set(PlaceState.Manual("家", somewhere))
+        settings.state.value = AppSettings(poiProvider = PoiProvider.BAIDU, baiduKey = Secret("baidu-ak"))
+        val viewModel = viewModel()
+        advanceUntilIdle()
+
+        assertEquals("baidu", store.refreshes.single().source.id)
+        assertEquals(SourceKind.BAIDU, viewModel.uiState.value.source)
+        assertEquals(PoiProvider.BAIDU, viewModel.uiState.value.poiProvider)
+        assertTrue(viewModel.uiState.value.canGeocode)
+        assertFalse(viewModel.uiState.value.showDemoBanner)
+    }
+
+    @Test
+    fun `a key of the other provider keeps the demo data and the address hint names the selected provider`() = runTest {
+        settings.state.value = AppSettings(amapKey = Secret("amap-key"), poiProvider = PoiProvider.BAIDU)
+        val viewModel = viewModel()
+        advanceUntilIdle()
+        assertEquals(SourceKind.DEMO, viewModel.uiState.value.source)
+        assertEquals("demo", store.refreshes.single().source.id)
+        assertTrue(viewModel.uiState.value.showDemoBanner)
+
+        viewModel.openAddressDialog()
+        viewModel.submitAddress("望京")
+        advanceUntilIdle()
+
+        assertEquals(UiText(R.string.home_address_needs_key_baidu), viewModel.uiState.value.addressDialog?.error)
+        assertTrue(geocoder.requests.isEmpty())
+    }
+
+    @Test
+    fun `switching the provider reloads from the new source`() = runTest {
+        places.set(PlaceState.Manual("家", somewhere))
+        settings.state.value = amap
+        val viewModel = viewModel()
+        advanceUntilIdle()
+
+        settings.state.value = amap.copy(baiduKey = Secret("baidu-ak"), poiProvider = PoiProvider.BAIDU)
+        advanceUntilIdle()
+
+        assertEquals(listOf("amap", "baidu"), store.refreshes.map { it.source.id })
+        assertEquals(SourceKind.BAIDU, viewModel.uiState.value.source)
     }
 
     @Test

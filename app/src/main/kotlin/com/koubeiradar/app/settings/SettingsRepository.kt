@@ -62,6 +62,8 @@ class DataStoreSettingsRepository(
         val d = AppSettings()
         return AppSettings(
             amapKey = p.secret(Keys.AMAP_KEY),
+            baiduKey = p.secret(Keys.BAIDU_KEY),
+            poiProvider = p[Keys.POI_PROVIDER]?.let { stored -> PoiProvider.entries.firstOrNull { it.name == stored } } ?: d.poiProvider,
             useDemoData = p[Keys.USE_DEMO_DATA] ?: d.useDemoData,
             provider = p[Keys.PROVIDER]?.let { stored -> LlmProvider.entries.firstOrNull { it.name == stored } } ?: d.provider,
             anthropic = AnthropicSettings(
@@ -93,6 +95,8 @@ class DataStoreSettingsRepository(
     /** Writes only what changed, so unrelated updates never re-encrypt credentials. */
     private fun write(p: MutablePreferences, old: AppSettings, new: AppSettings) {
         if (old.amapKey != new.amapKey) p.putSecret(Keys.AMAP_KEY, new.amapKey)
+        if (old.baiduKey != new.baiduKey) p.putSecret(Keys.BAIDU_KEY, new.baiduKey)
+        if (old.poiProvider != new.poiProvider) p[Keys.POI_PROVIDER] = new.poiProvider.name
         if (old.useDemoData != new.useDemoData) p[Keys.USE_DEMO_DATA] = new.useDemoData
         if (old.provider != new.provider) p[Keys.PROVIDER] = new.provider.name
         if (old.anthropic.apiKey != new.anthropic.apiKey) p.putSecret(Keys.ANTHROPIC_KEY, new.anthropic.apiKey)
@@ -137,6 +141,8 @@ class DataStoreSettingsRepository(
 
     private object Keys {
         val AMAP_KEY = stringPreferencesKey("amap_key_sealed")
+        val BAIDU_KEY = stringPreferencesKey("baidu_key_sealed")
+        val POI_PROVIDER = stringPreferencesKey("poi_provider")
         val USE_DEMO_DATA = booleanPreferencesKey("use_demo_data")
         val PROVIDER = stringPreferencesKey("llm_provider")
         val ANTHROPIC_KEY = stringPreferencesKey("anthropic_key_sealed")

@@ -12,6 +12,7 @@ import com.koubeiradar.app.service.RankerProvider
 import com.koubeiradar.app.service.centerFor
 import com.koubeiradar.app.service.point
 import com.koubeiradar.app.settings.AppSettings
+import com.koubeiradar.app.settings.PoiProvider
 import com.koubeiradar.app.settings.SaveResult
 import com.koubeiradar.app.settings.SavedPlace
 import com.koubeiradar.app.settings.ScoringPreset
@@ -19,6 +20,7 @@ import com.koubeiradar.app.settings.SettingsRepository
 import com.koubeiradar.app.settings.tryUpdate
 import com.koubeiradar.app.store.ShopStore
 import com.koubeiradar.app.ui.UiText
+import com.koubeiradar.app.ui.addressNeedsKeyRes
 import com.koubeiradar.app.ui.criteria.relaxed
 import com.koubeiradar.app.ui.messageRes
 import com.koubeiradar.core.model.Criteria
@@ -89,9 +91,10 @@ class HomeViewModel(
         load,
         combine(locatingCount, addressDialog) { count, dialog -> (count > 0) to dialog },
     ) { current, ranked, place, loadState, (isLocating, dialog) ->
-        val source = if (current.usesAmap) SourceKind.AMAP else SourceKind.DEMO
+        val source = SourceKind.of(current.activePoi)
         HomeUiState(
             source = source,
+            poiProvider = current.poiProvider,
             place = place,
             locating = isLocating,
             preset = current.preset,
@@ -109,7 +112,7 @@ class HomeViewModel(
         viewModelScope.launch {
             establishPlace()
             settingsState.filterNotNull()
-                .map { it.usesAmap to it.amapKey }
+                .map { it.activePoi to it.poiKey }
                 .distinctUntilChanged()
                 .collect { reload(force = false) }
         }
@@ -189,7 +192,7 @@ class HomeViewModel(
         geocodeJob = viewModelScope.launch {
             val geocoder = settingsState.value?.let(dataSources::geocoderFor)
             if (geocoder == null) {
-                addressDialog.update { it?.copy(error = UiText(R.string.home_address_needs_key)) }
+                addressDialog.update { it?.copy(error = UiText((settingsState.value?.poiProvider ?: PoiProvider.AMAP).addressNeedsKeyRes())) }
                 return@launch
             }
             addressDialog.value = AddressDialogState(searching = true)
@@ -206,7 +209,7 @@ class HomeViewModel(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: ShopSourceException) {
-                addressDialog.value = AddressDialogState(error = UiText(e.kind.messageRes()))
+                addressDialog.value = AddressDialogState(error = UiText(e.kind.messageRes(settingsState.value?.activePoi)))
             } catch (e: Exception) {
                 addressDialog.value = AddressDialogState(error = UiText(ShopSourceException.Kind.OTHER.messageRes()))
             }

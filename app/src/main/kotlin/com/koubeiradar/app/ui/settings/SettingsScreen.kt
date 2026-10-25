@@ -63,14 +63,16 @@ import com.koubeiradar.app.R
 import com.koubeiradar.app.settings.AnthropicSettings
 import com.koubeiradar.app.settings.InputProblem
 import com.koubeiradar.app.settings.Meal
+import com.koubeiradar.app.settings.PoiProvider
 import com.koubeiradar.app.settings.SettingField
 import com.koubeiradar.app.ui.components.ScoringPresetSelector
 import com.koubeiradar.app.ui.components.SectionTitle
 import com.koubeiradar.app.ui.components.asString
+import com.koubeiradar.app.ui.components.labelRes
 import com.koubeiradar.app.ui.criteria.CriteriaSheet
 import com.koubeiradar.app.ui.criteria.summaryText
 
-private enum class Dialog { PROVIDER, OPENAI_PRESET, EFFORT, CRITERIA, CLEAR_IMPORTED, CLEAR_POOL, CLEAR_KEYS, NOTIFICATION_RATIONALE, NOTIFICATIONS_BLOCKED }
+private enum class Dialog { POI_PROVIDER, PROVIDER, OPENAI_PRESET, EFFORT, CRITERIA, CLEAR_IMPORTED, CLEAR_POOL, CLEAR_KEYS, NOTIFICATION_RATIONALE, NOTIFICATIONS_BLOCKED }
 
 /** 设置: data source, AI provider, preferences, data management and the privacy statement. */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -117,10 +119,14 @@ fun SettingsScreen(viewModel: SettingsViewModel, onBack: () -> Unit, onMessage: 
     ) { padding ->
         Column(Modifier.padding(padding).fillMaxSize().verticalScroll(rememberScrollState()).padding(bottom = 24.dp)) {
             SectionTitle(stringResource(R.string.settings_section_data), Modifier.padding(horizontal = 16.dp, vertical = 12.dp))
-            SettingRow(R.string.settings_amap_key, state.amapKey.summary()) { field = SettingField.AMAP_KEY }
+            SettingRow(R.string.settings_poi_provider, stringResource(state.poiProvider.labelRes())) { dialog = Dialog.POI_PROVIDER }
+            when (state.poiProvider) {
+                PoiProvider.AMAP -> SettingRow(R.string.settings_amap_key, state.amapKey.summary()) { field = SettingField.AMAP_KEY }
+                PoiProvider.BAIDU -> SettingRow(R.string.settings_baidu_key, state.baiduKey.summary()) { field = SettingField.BAIDU_KEY }
+            }
             SwitchRow(R.string.settings_use_demo, R.string.settings_use_demo_summary, state.useDemoData, viewModel::setUseDemoData)
             Text(
-                stringResource(R.string.settings_amap_hint),
+                stringResource(if (state.poiProvider == PoiProvider.BAIDU) R.string.settings_baidu_hint else R.string.settings_amap_hint),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
@@ -170,7 +176,7 @@ fun SettingsScreen(viewModel: SettingsViewModel, onBack: () -> Unit, onMessage: 
             Column(Modifier.padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text(stringResource(R.string.settings_about_body), style = MaterialTheme.typography.bodyMedium)
                 Text(stringResource(R.string.settings_privacy_title), style = MaterialTheme.typography.titleSmall)
-                Text(stringResource(R.string.settings_privacy_amap), style = MaterialTheme.typography.bodyMedium)
+                Text(stringResource(R.string.settings_privacy_poi), style = MaterialTheme.typography.bodyMedium)
                 Text(stringResource(R.string.settings_privacy_llm), style = MaterialTheme.typography.bodyMedium)
                 Text(stringResource(R.string.settings_privacy_meals), style = MaterialTheme.typography.bodyMedium)
                 Text(stringResource(R.string.settings_privacy_local), style = MaterialTheme.typography.bodyMedium)
@@ -201,6 +207,14 @@ fun SettingsScreen(viewModel: SettingsViewModel, onBack: () -> Unit, onMessage: 
         )
     }
     when (dialog) {
+        Dialog.POI_PROVIDER -> ChoiceDialog(
+            title = R.string.settings_poi_provider,
+            options = PoiProvider.entries.map { it.name to stringResource(it.labelRes()) },
+            selected = state.poiProvider.name,
+            onSelect = { viewModel.setPoiProvider(PoiProvider.valueOf(it)) },
+            onDismiss = { dialog = null },
+        )
+
         Dialog.PROVIDER -> ChoiceDialog(
             title = R.string.settings_provider,
             options = LlmProvider.entries.map { it.name to it.label },
@@ -275,6 +289,7 @@ private fun KeyStatus.summary(): String = when {
 
 private fun SettingsUiState.isSet(field: SettingField): Boolean = when (field) {
     SettingField.AMAP_KEY -> amapKey.isSet
+    SettingField.BAIDU_KEY -> baiduKey.isSet
     SettingField.ANTHROPIC_KEY -> anthropicKey.isSet
     SettingField.OPENAI_KEY -> openAiKey.isSet
     else -> true
@@ -347,6 +362,7 @@ private class FieldSpec(@StringRes val title: Int, @StringRes val hint: Int, val
 
 private fun SettingField.spec(state: SettingsUiState): FieldSpec = when (this) {
     SettingField.AMAP_KEY -> FieldSpec(R.string.settings_amap_key, R.string.settings_hint_key, "", KeyboardType.Password)
+    SettingField.BAIDU_KEY -> FieldSpec(R.string.settings_baidu_key, R.string.settings_hint_baidu_key, "", KeyboardType.Password)
     SettingField.ANTHROPIC_KEY -> FieldSpec(R.string.settings_api_key, R.string.settings_hint_key, "", KeyboardType.Password)
     SettingField.OPENAI_KEY -> FieldSpec(R.string.settings_api_key, R.string.settings_hint_key, "", KeyboardType.Password)
     SettingField.ANTHROPIC_MODEL -> FieldSpec(R.string.settings_claude_model, R.string.settings_hint_claude_model, state.anthropicModel, KeyboardType.Ascii)

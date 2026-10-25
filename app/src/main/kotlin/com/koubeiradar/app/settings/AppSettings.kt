@@ -25,6 +25,9 @@ value class Secret(val value: String) {
     }
 }
 
+/** Where nearby restaurants come from when real data is used. Each provider has its own key. */
+enum class PoiProvider { AMAP, BAIDU }
+
 enum class ScoringPreset(val config: ScoringConfig) {
     REPUTATION_FIRST(ScoringConfig.REPUTATION_FIRST),
     VALUE_FIRST(ScoringConfig.VALUE_FIRST),
@@ -65,7 +68,9 @@ data class OpenAiSettings(
 
 data class AppSettings(
     val amapKey: Secret = Secret.EMPTY,
-    /** Forces the offline demo data even when an Amap key is present. */
+    val baiduKey: Secret = Secret.EMPTY,
+    val poiProvider: PoiProvider = PoiProvider.AMAP,
+    /** Forces the offline demo data even when a key for the selected [poiProvider] is present. */
     val useDemoData: Boolean = false,
     val provider: LlmProvider = LlmProvider.ANTHROPIC,
     val anthropic: AnthropicSettings = AnthropicSettings(),
@@ -77,8 +82,17 @@ data class AppSettings(
     val savedPlace: SavedPlace? = null,
     val meals: MealNotificationSettings = MealNotificationSettings(),
 ) {
-    /** Real Amap data is used only with a key and while the demo switch is off. */
-    val usesAmap: Boolean get() = amapKey.isSet && !useDemoData
+    /** The key of the selected [poiProvider]. */
+    val poiKey: Secret get() = when (poiProvider) {
+        PoiProvider.AMAP -> amapKey
+        PoiProvider.BAIDU -> baiduKey
+    }
+
+    /** Real data is used only with a key for the selected provider and while the demo switch is off. */
+    val usesRealData: Boolean get() = poiKey.isSet && !useDemoData
+
+    /** The provider whose data is shown right now; `null` while the offline demo data is. */
+    val activePoi: PoiProvider? get() = poiProvider.takeIf { usesRealData }
 
     /** The LLM configuration to use, or `null` while the selected provider is not fully set up. */
     fun llmConfig(): LlmConfig? = when (provider) {
