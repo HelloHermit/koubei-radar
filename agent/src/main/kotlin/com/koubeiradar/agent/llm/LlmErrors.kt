@@ -26,15 +26,38 @@ internal object LlmErrors {
         cause: Throwable? = null,
     ): LlmException {
         val kind = kindForStatus(status)
-        val detail = providerMessage?.let { cleanProviderMessage(it, apiKey) }?.takeIf { it.isNotEmpty() }
-        val headline = when (kind) {
-            Kind.AUTH -> "$providerName 认证失败（HTTP $status）：API Key 无效、已过期或无权使用该模型。"
-            Kind.RATE_LIMIT -> "$providerName 请求过于频繁或额度已用完（HTTP $status），请稍后再试。"
-            Kind.BAD_REQUEST -> "$providerName 拒绝了这次请求（HTTP $status），请检查模型名称、Base URL 和请求内容。"
-            Kind.SERVER -> "$providerName 服务暂时不可用（HTTP $status），请稍后再试。"
-            else -> "$providerName 调用失败（HTTP $status）。"
+        return LlmException(withDetail(headline(providerName, kind, "（HTTP $status）"), providerMessage, apiKey), kind, status, cause)
+    }
+
+    /** An `error` event inside a response stream that had already started (HTTP 200); [errorType] is the API's `error.type`. */
+    fun fromStreamError(
+        providerName: String,
+        errorType: String?,
+        providerMessage: String?,
+        apiKey: String,
+        cause: Throwable? = null,
+    ): LlmException {
+        val kind = when (errorType) {
+            "overloaded_error", "api_error" -> Kind.SERVER
+            "rate_limit_error" -> Kind.RATE_LIMIT
+            "authentication_error", "permission_error" -> Kind.AUTH
+            "invalid_request_error", "not_found_error", "request_too_large" -> Kind.BAD_REQUEST
+            else -> Kind.OTHER
         }
-        return LlmException(if (detail == null) headline else "$headline 服务端返回：$detail", kind, status, cause)
+        return LlmException(withDetail(headline(providerName, kind, "（生成中途）"), providerMessage, apiKey), kind, null, cause)
+    }
+
+    private fun headline(providerName: String, kind: Kind, where: String): String = when (kind) {
+        Kind.AUTH -> "$providerName 认证失败$where：API Key 无效、已过期或无权使用该模型。"
+        Kind.RATE_LIMIT -> "$providerName 请求过于频繁或额度已用完$where，请稍后再试。"
+        Kind.BAD_REQUEST -> "$providerName 拒绝了这次请求$where，请检查模型名称、Base URL 和请求内容。"
+        Kind.SERVER -> "$providerName 服务暂时不可用$where，请稍后再试。"
+        else -> "$providerName 调用失败$where。"
+    }
+
+    private fun withDetail(headline: String, providerMessage: String?, apiKey: String): String {
+        val detail = providerMessage?.let { cleanProviderMessage(it, apiKey) }?.takeIf { it.isNotEmpty() }
+        return if (detail == null) headline else "$headline 服务端返回：$detail"
     }
 
     fun network(providerName: String, cause: Throwable): LlmException =

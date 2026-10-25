@@ -13,8 +13,11 @@ import kotlinx.coroutines.suspendCancellableCoroutine
  * Unlike `runInterruptible`, cancellation resumes the caller immediately instead of waiting for the blocking call:
  * the worker thread is interrupted, but a plain socket read does not react to an interrupt, so waiting for it could
  * keep a cancelled agent run alive until the network timeout. The abandoned result is discarded.
+ *
+ * [onCancel] runs once on the cancelling thread, after the interrupt, for whatever can really abort the work (closing a
+ * socket or stream); it must be quick and must not throw.
  */
-internal suspend fun <T> awaitBlocking(block: () -> T): T = suspendCancellableCoroutine { continuation ->
+internal suspend fun <T> awaitBlocking(onCancel: () -> Unit = {}, block: () -> T): T = suspendCancellableCoroutine { continuation ->
     val task = FutureTask<Unit> {
         try {
             continuation.resume(block())
@@ -22,6 +25,9 @@ internal suspend fun <T> awaitBlocking(block: () -> T): T = suspendCancellableCo
             continuation.resumeWithException(t)
         }
     }
-    continuation.invokeOnCancellation { task.cancel(true) }
+    continuation.invokeOnCancellation {
+        task.cancel(true)
+        onCancel()
+    }
     Dispatchers.IO.asExecutor().execute(task)
 }

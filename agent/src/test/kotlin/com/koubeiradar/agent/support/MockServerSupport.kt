@@ -15,6 +15,10 @@ import mockwebserver3.RecordedRequest
 fun jsonResponse(body: String, code: Int = 200): MockResponse =
     MockResponse.Builder().code(code).addHeader("Content-Type", "application/json").body(body).build()
 
+/** A `text/event-stream` answer; [body] is the complete stream (`event:`/`data:` records separated by blank lines). */
+fun sseResponse(body: String, code: Int = 200): MockResponse =
+    MockResponse.Builder().code(code).addHeader("Content-Type", "text/event-stream").body(body).build()
+
 /** The next request the server received; fails (instead of hanging) when none arrives. */
 fun MockWebServer.nextRequest(): RecordedRequest =
     checkNotNull(takeRequest(10, TimeUnit.SECONDS)) { "the client did not send a request" }
