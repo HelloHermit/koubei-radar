@@ -5,6 +5,7 @@ import androidx.datastore.preferences.core.MutablePreferences
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.core.stringPreferencesKey
 import com.koubeiradar.agent.llm.LlmProvider
@@ -21,6 +22,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.Json
 import java.io.IOException
+import java.time.LocalTime
 
 interface SettingsRepository {
     val settings: Flow<AppSettings>
@@ -78,6 +80,13 @@ class DataStoreSettingsRepository(
             preset = p[Keys.PRESET]?.let { stored -> ScoringPreset.entries.firstOrNull { it.name == stored } } ?: d.preset,
             demoBannerDismissed = p[Keys.DEMO_BANNER_DISMISSED] ?: d.demoBannerDismissed,
             savedPlace = p[Keys.SAVED_PLACE]?.let { decodeJson<SavedPlace>(it) },
+            meals = MealNotificationSettings(
+                lunchEnabled = p[Keys.MEAL_LUNCH_ENABLED] ?: d.meals.lunchEnabled,
+                lunchTime = p.mealTime(Keys.MEAL_LUNCH_MINUTE) ?: d.meals.lunchTime,
+                dinnerEnabled = p[Keys.MEAL_DINNER_ENABLED] ?: d.meals.dinnerEnabled,
+                dinnerTime = p.mealTime(Keys.MEAL_DINNER_MINUTE) ?: d.meals.dinnerTime,
+                weekdaysOnly = p[Keys.MEAL_WEEKDAYS_ONLY] ?: d.meals.weekdaysOnly,
+            ),
         )
     }
 
@@ -101,7 +110,15 @@ class DataStoreSettingsRepository(
             val place = new.savedPlace
             if (place == null) p.remove(Keys.SAVED_PLACE) else p[Keys.SAVED_PLACE] = JSON.encodeToString(SavedPlace.serializer(), place)
         }
+        val meals = new.meals
+        if (old.meals.lunchEnabled != meals.lunchEnabled) p[Keys.MEAL_LUNCH_ENABLED] = meals.lunchEnabled
+        if (old.meals.lunchTime != meals.lunchTime) p[Keys.MEAL_LUNCH_MINUTE] = MealNotificationSettings.minuteOfDay(meals.lunchTime)
+        if (old.meals.dinnerEnabled != meals.dinnerEnabled) p[Keys.MEAL_DINNER_ENABLED] = meals.dinnerEnabled
+        if (old.meals.dinnerTime != meals.dinnerTime) p[Keys.MEAL_DINNER_MINUTE] = MealNotificationSettings.minuteOfDay(meals.dinnerTime)
+        if (old.meals.weekdaysOnly != meals.weekdaysOnly) p[Keys.MEAL_WEEKDAYS_ONLY] = meals.weekdaysOnly
     }
+
+    private fun Preferences.mealTime(key: Preferences.Key<Int>): LocalTime? = this[key]?.let(MealNotificationSettings::timeOfMinute)
 
     private fun Preferences.secret(key: Preferences.Key<String>): Secret =
         this[key]?.let(secretBox::decrypt)?.let(::Secret) ?: Secret.EMPTY
@@ -134,6 +151,11 @@ class DataStoreSettingsRepository(
         val PRESET = stringPreferencesKey("scoring_preset")
         val DEMO_BANNER_DISMISSED = booleanPreferencesKey("demo_banner_dismissed")
         val SAVED_PLACE = stringPreferencesKey("saved_place_json")
+        val MEAL_LUNCH_ENABLED = booleanPreferencesKey("meal_lunch_enabled")
+        val MEAL_LUNCH_MINUTE = intPreferencesKey("meal_lunch_minute")
+        val MEAL_DINNER_ENABLED = booleanPreferencesKey("meal_dinner_enabled")
+        val MEAL_DINNER_MINUTE = intPreferencesKey("meal_dinner_minute")
+        val MEAL_WEEKDAYS_ONLY = booleanPreferencesKey("meal_weekdays_only")
     }
 
     private companion object {

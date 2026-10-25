@@ -2,8 +2,12 @@ package com.koubeiradar.app
 
 import com.koubeiradar.agent.llm.LlmProvider
 import com.koubeiradar.agent.llm.ProviderPresets
+import com.koubeiradar.app.meal.TestOutcome
 import com.koubeiradar.app.settings.AppSettings
 import com.koubeiradar.app.settings.InputProblem
+import com.koubeiradar.app.settings.Meal
+import com.koubeiradar.app.settings.MealNotificationSettings
+import com.koubeiradar.app.settings.SavedPlace
 import com.koubeiradar.app.settings.ScoringPreset
 import com.koubeiradar.app.settings.Secret
 import com.koubeiradar.app.settings.SettingField
@@ -12,6 +16,7 @@ import com.koubeiradar.app.ui.settings.KeyStatus
 import com.koubeiradar.app.ui.settings.SettingsEvent
 import com.koubeiradar.app.ui.settings.SettingsViewModel
 import com.koubeiradar.core.model.Criteria
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
@@ -20,6 +25,8 @@ import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
 import org.junit.Rule
+import java.io.IOException
+import java.time.LocalTime
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -34,10 +41,12 @@ class SettingsViewModelTest {
 
     private val settings = FakeSettings()
     private val store = FakeShopStore()
+    private val permission = FakeNotificationPermission()
+    private val mealTests = FakeMealTests()
 
-    private fun TestScope.viewModel() = SettingsViewModel(settings, store)
+    private fun TestScope.viewModel() = SettingsViewModel(settings, store, permission, mealTests)
 
-    private fun TestScope.eventsOf(viewModel: SettingsViewModel): List<SettingsEvent> {
+    private fun TestScope.eventsOf(viewModel: SettingsViewModel): MutableList<SettingsEvent> {
         val events = mutableListOf<SettingsEvent>()
         backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { viewModel.events.collect { events += it } }
         return events
@@ -207,5 +216,202 @@ class SettingsViewModelTest {
         assertFalse(viewModel.uiState.value.loaded)
         advanceUntilIdle()
         assertTrue(viewModel.uiState.value.loaded)
+    }
+
+    @Test
+    fun `the meal section starts off and shows what the settings hold`() = runTest {
+        val viewModel = viewModel()
+        advanceUntilIdle()
+        assertEquals(MealNotificationSettings(), viewModel.uiState.value.meals)
+        assertTrue(viewModel.uiState.value.notificationsAllowed)
+
+        val place = SavedPlace("望京SOHO", somewhereInTown)
+        settings.state.value = settings.current.copy(savedPlace = place, meals = MealNotificationSettings(lunchEnabled = true))
+        advanceUntilIdle()
+        assertEquals(place, viewModel.uiState.value.savedPlace)
+        assertTrue(viewModel.uiState.value.meals.lunchEnabled)
+    }
+
+    @Test
+    fun `a meal is turned on at once when notifications are allowed`() = runTest {
+        val viewModel = viewModel()
+        val events = eventsOf(viewModel)
+
+        viewModel.setMealEnabled(Meal.DINNER, true)
+        advanceUntilIdle()
+
+        assertTrue(settings.current.meals.dinnerEnabled)
+        assertFalse(settings.current.meals.lunchEnabled)
+        assertTrue(events.isEmpty())
+    }
+
+    @Test
+    fun `turning a meal on without permission asks for it first and stores nothing`() = runTest {
+        permission.granted = false
+        val viewModel = viewModel()
+        val events = eventsOf(viewModel)
+
+        viewModel.setMealEnabled(Meal.LUNCH, true)
+        advanceUntilIdle()
+
+        assertEquals(listOf<SettingsEvent>(SettingsEvent.RequestNotificationPermission(Meal.LUNCH)), events)
+        assertFalse(settings.current.meals.lunchEnabled)
+    }
+
+    @Test
+    fun `a granted permission turns the meal on`() = runTest {
+        permission.granted = false
+        val viewModel = viewModel()
+        val events = eventsOf(viewModel)
+
+        viewModel.onNotificationPermissionResult(Meal.LUNCH, granted = true)
+        advanceUntilIdle()
+
+        assertTrue(settings.current.meals.lunchEnabled)
+        assertTrue(viewModel.uiState.value.notificationsAllowed)
+        assertTrue(events.isEmpty())
+    }
+
+    @Test
+    fun `a denied permission keeps the meal off and offers the system settings`() = runTest {
+        permission.granted = false
+        val viewModel = viewModel()
+        val events = eventsOf(viewModel)
+
+        viewModel.onNotificationPermissionResult(Meal.DINNER, granted = false)
+        advanceUntilIdle()
+
+        assertEquals(listOf<SettingsEvent>(SettingsEvent.NotificationsBlocked), events)
+        assertFalse(settings.current.meals.dinnerEnabled)
+        assertFalse(viewModel.uiState.value.notificationsAllowed)
+    }
+
+    @Test
+    fun `turning a meal off never needs the permission`() = runTest {
+        settings.state.value = AppSettings(meals = MealNotificationSettings(lunchEnabled = true, dinnerEnabled = true))
+        permission.granted = false
+        val viewModel = viewModel()
+        val events = eventsOf(viewModel)
+
+        viewModel.setMealEnabled(Meal.LUNCH, false)
+        advanceUntilIdle()
+
+        assertFalse(settings.current.meals.lunchEnabled)
+        assertTrue(settings.current.meals.dinnerEnabled)
+        assertTrue(events.isEmpty())
+    }
+
+    @Test
+    fun `the screen learns when the user changed the notification settings of the app`() = runTest {
+        val viewModel = viewModel()
+        advanceUntilIdle()
+
+        permission.granted = false
+        viewModel.refreshNotificationStatus()
+        advanceUntilIdle()
+        assertFalse(viewModel.uiState.value.notificationsAllowed)
+
+        permission.granted = true
+        viewModel.refreshNotificationStatus()
+        advanceUntilIdle()
+        assertTrue(viewModel.uiState.value.notificationsAllowed)
+    }
+
+    @Test
+    fun `meal times are stored per meal in whole minutes`() = runTest {
+        val viewModel = viewModel()
+
+        viewModel.setMealTime(Meal.LUNCH, 12, 5)
+        viewModel.setMealTime(Meal.DINNER, 0, 0)
+        advanceUntilIdle()
+
+        assertEquals(LocalTime.of(12, 5), settings.current.meals.lunchTime)
+        assertEquals(LocalTime.MIDNIGHT, settings.current.meals.dinnerTime)
+    }
+
+    @Test
+    fun `a time outside the day is ignored`() = runTest {
+        val viewModel = viewModel()
+
+        listOf(24 to 0, 12 to 60, -1 to 30, 12 to -1).forEach { (hour, minute) -> viewModel.setMealTime(Meal.LUNCH, hour, minute) }
+        advanceUntilIdle()
+
+        assertEquals(MealNotificationSettings(), settings.current.meals)
+    }
+
+    @Test
+    fun `weekdays only is stored`() = runTest {
+        val viewModel = viewModel()
+
+        viewModel.setWeekdaysOnly(true)
+        advanceUntilIdle()
+
+        assertTrue(settings.current.meals.weekdaysOnly)
+    }
+
+    @Test
+    fun `a meal setting that cannot be written says so`() = runTest {
+        val viewModel = viewModel()
+        val events = eventsOf(viewModel)
+        settings.failure = IOException("disk full")
+
+        viewModel.setMealEnabled(Meal.LUNCH, true)
+        advanceUntilIdle()
+
+        assertEquals(listOf<SettingsEvent>(SettingsEvent.Message(UiText(R.string.msg_save_failed))), events)
+        assertFalse(settings.current.meals.lunchEnabled)
+    }
+
+    @Test
+    fun `the test notification reports each outcome`() = runTest {
+        val viewModel = viewModel()
+        val events = eventsOf(viewModel)
+
+        mapOf(
+            TestOutcome.SENT to SettingsEvent.Message(UiText(R.string.settings_meals_msg_sent)),
+            TestOutcome.NOTHING_TO_RECOMMEND to SettingsEvent.Message(UiText(R.string.settings_meals_msg_nothing)),
+            TestOutcome.FAILED to SettingsEvent.Message(UiText(R.string.settings_meals_msg_failed)),
+            TestOutcome.NOTIFICATIONS_BLOCKED to SettingsEvent.NotificationsBlocked,
+        ).forEach { (outcome, expected) ->
+            events.clear()
+            mealTests.outcome = outcome
+            viewModel.sendTestNotification()
+            advanceUntilIdle()
+            assertEquals(listOf(expected), events, "$outcome")
+        }
+        assertEquals(4, mealTests.calls)
+    }
+
+    @Test
+    fun `a test notification that crashes is reported as a failure`() = runTest {
+        val viewModel = viewModel()
+        val events = eventsOf(viewModel)
+        mealTests.failure = IllegalStateException("boom")
+
+        viewModel.sendTestNotification()
+        advanceUntilIdle()
+
+        assertEquals(listOf<SettingsEvent>(SettingsEvent.Message(UiText(R.string.settings_meals_msg_failed))), events)
+        assertFalse(viewModel.uiState.value.sendingTest)
+    }
+
+    @Test
+    fun `a second tap while a test notification is being prepared does nothing`() = runTest {
+        val viewModel = viewModel()
+        mealTests.gate = CompletableDeferred()
+
+        viewModel.sendTestNotification()
+        advanceUntilIdle()
+        assertTrue(viewModel.uiState.value.sendingTest)
+        viewModel.sendTestNotification()
+        advanceUntilIdle()
+        assertEquals(1, mealTests.calls)
+
+        mealTests.gate?.complete(Unit)
+        advanceUntilIdle()
+        assertFalse(viewModel.uiState.value.sendingTest)
+        viewModel.sendTestNotification()
+        advanceUntilIdle()
+        assertEquals(2, mealTests.calls)
     }
 }

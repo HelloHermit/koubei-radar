@@ -236,6 +236,7 @@
     <string name="settings_section_ai">AI 服务（智能体与导入）</string>
     <string name="settings_section_preferences">推荐偏好</string>
     <string name="settings_section_manage">数据管理</string>
+    <string name="settings_section_meals">每日推荐</string>
     <string name="settings_section_about">关于与隐私</string>
     <string name="settings_amap_key">高德 Web 服务 Key</string>
     <string name="settings_use_demo">使用演示数据</string>
@@ -282,6 +283,7 @@
     <string name="settings_privacy_amap">高德地图：使用真实数据时，你的位置坐标（或你输入的地址）会发给高德，用于检索附近店铺。</string>
     <string name="settings_privacy_llm">AI 服务商：你向智能体输入的需求、候选店铺的公开信息（评分、距离等），以及你主动选择或分享的截图和文字，会发给你选择的服务商。你的位置不会发给 AI 服务商。</string>
     <string name="settings_privacy_local">只保存在本机：API Key 经系统密钥库加密保存；你导入的店铺（可能含有你截取的评价文字）只存放在本机的应用私有目录，不会上传，也不会备份到云端；应用不含统计或广告组件。</string>
+    <string name="settings_privacy_meals">每日推荐：你最后一次设置的位置只保存在这台设备上，推荐在本机计算，不会发给任何 AI 服务商，应用也不会在后台读取定位。使用真实数据时，到了推荐时间应用会用这个位置向高德检索附近店铺。</string>
     <string name="settings_version">版本 %1$s</string>
     <string name="settings_msg_saved">已保存</string>
     <string name="settings_msg_cleared">已清除</string>
@@ -289,6 +291,44 @@
     <string name="settings_msg_imported_cleared">已清除导入的店铺</string>
     <string name="settings_msg_pool_cleared">已清空候选池</string>
     <string name="settings_msg_keys_cleared">已清除所有已保存的密钥</string>
+
+    <!-- Daily meal recommendation -->
+    <string name="meal_lunch">午饭</string>
+    <string name="meal_dinner">晚饭</string>
+    <string name="meal_channel_name">每日推荐</string>
+    <string name="meal_channel_description">饭点前后推送附近口碑最好的几家店</string>
+    <string name="meal_notification_title_one">%1$s推荐：%2$s</string>
+    <string name="meal_notification_title_many">%1$s推荐：%2$s 等 %3$d 家</string>
+    <string name="meal_notification_title_plain">%1$s推荐</string>
+    <string name="meal_notification_line">%1$s：%2$s</string>
+    <string name="meal_notification_no_place">打开口碑雷达设置位置，就能收到每日推荐</string>
+    <string name="meal_fact_score">%1$d分</string>
+    <string name="meal_fact_rating">★%1$s</string>
+    <string name="meal_fact_price">人均%1$s</string>
+    <string name="meal_fact_separator">" · "</string>
+    <string name="settings_meals_subtitle">%1$s %2$s · %3$s %4$s</string>
+    <string name="settings_meals_lunch">午饭推荐</string>
+    <string name="settings_meals_dinner">晚饭推荐</string>
+    <string name="settings_meals_time_cd">%1$s时间 %2$s，点击修改</string>
+    <string name="settings_meals_time_dialog_title">%1$s时间</string>
+    <string name="settings_meals_weekdays">仅工作日</string>
+    <string name="settings_meals_weekdays_summary">周六、周日不推送</string>
+    <string name="settings_meals_hint">实际送达的时间大约在设定时间前后：系统的省电策略可能让通知晚几分钟。推荐用的是你在应用里最后一次设置的位置，应用不会在后台读取定位。</string>
+    <string name="settings_meals_place_none">还没有位置：先在推荐页设置位置，才能收到推荐。</string>
+    <string name="settings_meals_place_device">推荐使用的位置：上一次的定位位置</string>
+    <string name="settings_meals_place_address">推荐使用的位置：%1$s</string>
+    <string name="settings_meals_blocked">通知已被关闭</string>
+    <string name="settings_meals_blocked_summary">每日推荐无法送达，点击查看如何打开</string>
+    <string name="settings_meals_test">立即发送一条测试通知</string>
+    <string name="settings_meals_test_summary">按现在的设置算一次，看看会收到什么</string>
+    <string name="settings_meals_msg_sent">已发送，请下拉通知栏查看</string>
+    <string name="settings_meals_msg_nothing">附近暂时没有值得推荐的店铺，没有发送通知</string>
+    <string name="settings_meals_msg_failed">获取附近店铺失败，没有发送通知，请稍后重试</string>
+    <string name="settings_meals_rationale_title">开启每日推荐</string>
+    <string name="settings_meals_rationale_body">每日推荐是一条通知，需要你允许应用发送通知。它只用本机保存的上次位置，不会在后台定位。</string>
+    <string name="settings_meals_rationale_continue">继续</string>
+    <string name="settings_meals_denied_title">没有通知权限</string>
+    <string name="settings_meals_denied_body">没有通知权限，每日推荐无法送达，所以开关保持关闭。可以到系统设置里允许「口碑雷达」发送通知。</string>
 
     <!-- Input problems -->
     <string name="problem_empty">不能为空</string>

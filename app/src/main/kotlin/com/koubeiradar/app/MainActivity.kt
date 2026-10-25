@@ -28,10 +28,16 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
+        if (intent.action == ACTION_OPEN_HOME) container.homeRequests.request()
         offerShare(intent)
     }
 
     private fun offerShare(intent: Intent?) {
         ShareIntake.parse(intent)?.let(container.shareInbox::offer)
+    }
+
+    companion object {
+        /** Sent by the daily recommendation notification: show the home tab. */
+        const val ACTION_OPEN_HOME = "com.koubeiradar.app.action.OPEN_HOME"
     }
 }

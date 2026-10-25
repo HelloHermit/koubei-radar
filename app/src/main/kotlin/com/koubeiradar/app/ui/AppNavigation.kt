@@ -86,6 +86,11 @@ private fun NavController.switchToTab(tab: Tab) = navigate(tab.route) {
     restoreState = true
 }
 
+/** Back to the home tab from wherever the user is (another tab, settings, a shop's details). Home is the start of the stack, so it is always there to return to. */
+private fun NavController.showHome() {
+    if (currentDestination?.hasRoute(HomeRoute::class) != true) popBackStack(HomeRoute, inclusive = false)
+}
+
 /** The app: three tabs (推荐 / 智能体 / 导入) with settings and shop details pushed on top. */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -110,6 +115,10 @@ fun KoubeiApp(container: AppContainer) {
     // non-null: an import screen that is already alive consumes the payload at once, and the change would go unseen.
     LaunchedEffect(container.shareInbox) {
         container.shareInbox.arrivals.collect { navController.switchToTab(Tab.IMPORT) }
+    }
+
+    LaunchedEffect(container.homeRequests) {
+        container.homeRequests.requests.collect { navController.showHome() }
     }
 
     Scaffold(
