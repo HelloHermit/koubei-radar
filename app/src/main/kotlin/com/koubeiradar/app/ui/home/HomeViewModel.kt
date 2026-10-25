@@ -245,8 +245,9 @@ class HomeViewModel(
             when (val result = location.currentLocation()) {
                 is LocationResult.Found -> {
                     places.set(PlaceState.Device(result.point, result.accuracyMeters))
-                    rememberPlace(SavedPlace(address = "", point = result.point, fromDevice = true))
-                    resolveAddress(result.point)
+                    // The address is written into the place saved here, so the lookup starts only once that write is done: a cached
+                    // address answers at once, and its update would otherwise find no place to put the address into.
+                    resolveAddress(result.point, after = rememberPlace(SavedPlace(address = "", point = result.point, fromDevice = true)))
                     return true
                 }
 
@@ -271,9 +272,10 @@ class HomeViewModel(
      * typed address cancels the lookup; a failure, a missing provider (demo data) or "nothing found" silently keeps "当前位置".
      * The label goes into the shown place and, as `address` of the remembered `fromDevice` place, into the settings.
      */
-    private fun resolveAddress(point: GeoPoint) {
+    private fun resolveAddress(point: GeoPoint, after: Job) {
         addressJob?.cancel()
         addressJob = viewModelScope.launch {
+            after.join()
             val answer = try {
                 val current = settingsState.filterNotNull().first()
                 dataSources.reverseGeocoderFor(current)?.reverseGeocode(point)
@@ -322,9 +324,8 @@ class HomeViewModel(
     }
 
     /** The daily recommendation looks around the last place set here, without reading the location itself. A failed write only means it keeps the older place. */
-    private fun rememberPlace(place: SavedPlace) {
+    private fun rememberPlace(place: SavedPlace): Job =
         viewModelScope.launch { settings.tryUpdate { it.copy(savedPlace = place) } }
-    }
 
     private suspend fun saveSettings(transform: (AppSettings) -> AppSettings): Boolean {
         val saved = settings.tryUpdate(transform) == SaveResult.SAVED

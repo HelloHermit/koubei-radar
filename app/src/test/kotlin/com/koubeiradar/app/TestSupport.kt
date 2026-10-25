@@ -70,10 +70,14 @@ fun scored(shop: Shop, score: Double = (shop.rating ?: 0.0) * 20, verdict: Verdi
 class FakeSettings(initial: AppSettings = AppSettings()) : SettingsRepository {
     val state = MutableStateFlow(initial)
     var failure: Throwable? = null
+
+    /** While set, every write waits for it before it is applied: a slow disk. */
+    var writeGate: CompletableDeferred<Unit>? = null
     override val settings: Flow<AppSettings> get() = state
 
     override suspend fun update(transform: (AppSettings) -> AppSettings) {
         failure?.let { throw it }
+        writeGate?.await()
         state.update(transform)
     }
 
