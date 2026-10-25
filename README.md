@@ -81,6 +81,7 @@ export ANDROID_HOME=/path/to/android-sdk     # 或在 local.properties 里写 sd
 
 **已验证**
 - 从全新目录、关闭构建缓存，`./gradlew test assembleDebug` 通过（AGP 9.4.1 / Gradle 9.6 / Kotlin 2.4.21 / compileSdk 37）。
+- **GitHub Actions**（`.github/workflows/ci.yml`，Ubuntu 托管机，JDK 21）：前 9 次推送全部失败，原因是 `setup-android` 默认要装一个已下架的 `tools` 包、还没开始构建就退出（已修）；修好后一次 `./gradlew test assembleDebug` 全部通过（7 分 52 秒），这是第一次在沙箱以外的干净环境里验证"能从零构建、测试全绿"。CI 不覆盖真机、真实接口和 `assembleRelease`。
 - 825 条自动化测试：core 146（评分、筛选、评价词典）、data 245（高德与百度的解析/分页/错误映射/密钥脱敏/坐标参数、两家的反向地理编码（标签缩短、`[]` 空字段、无结果、缓存命中/取整/并发）、营业时间、演示数据、合并与并发缓存，含真实管线集成测试，其中百度夹具验证"有评价数才有置信分"）、
   agent 155（Claude 与 OpenAI 兼容两种线协议、智能体循环、提示注入防护、导入提取，含"真实工具 + 脚本化模型"的端到端测试）、
   app 279（ViewModel（含定位地址的后台解析、取消、静默失败、演示模式零请求）、设置与加密（含数据源选择与旧版设置兼容）、坐标转换、分享入口、每日推荐的调度/用例/设置，以及 53 条 Robolectric 测试：真实 `MainActivity` 启动、导航、旋转重建、分享、字体放大、暗色、定位行显示地址、每日推荐的通知与 WorkManager）。
@@ -97,7 +98,6 @@ export ANDROID_HOME=/path/to/android-sdk     # 或在 local.properties 里写 sd
 - **Release 构建 / R8**：release 已开启 R8 压缩 + 资源压缩（`app/proguard-rules.pro`；规则依据 R8 输出和各依赖自带的消费规则写成，见 [DESIGN.md §7.2](docs/DESIGN.md)）。`./gradlew :app:assembleRelease` 能构建，并从 `mapping.txt` / `seeds.txt` / dex 确认 Anthropic SDK 类、`AnthropicLlmClient`、`@Serializable` 序列化器、`MealWorker` 构造函数都还在；但产物 `app-release-unsigned.apk` **没有签名**（仓库里没有 keystore，请自行签名后再安装），也**没有在任何设备或模拟器上运行过**，所以混淆后 Jackson 反射、kotlinx.serialization、WorkManager 在运行时是否正常**未验证**；若出现运行时崩溃，先查 keep 规则。
 - **每日推荐通知**：定时、通知显示、Doze 下的实际延迟、Android 13+ 权限弹窗都只在 JVM 上（Robolectric + WorkManager 测试驱动）验证过，没有在真机上看到过真实通知；时区变化要到下次打开 App 才会修正推荐时间。
 - **拉起外卖 App**：包名（`com.sankuai.meituan.takeoutnew`、`com.sankuai.meituan`、`me.ele`）来自常识，未在真机核对；采用"复制店名 + 按包名启动"，不依赖私有 deeplink。
-- **CI**：`.github/workflows/ci.yml` 已写好但没有在 GitHub 上跑过。
 - **口碑评分的"准确度"**：这是工程启发式，没有用平台真实标注数据校准；`ScoringConfig` 暴露了全部参数。
 
 ## 许可
