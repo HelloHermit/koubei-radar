@@ -1,13 +1,23 @@
 package com.koubeiradar.app.ui.home
 
 import com.koubeiradar.app.service.PlaceState
+import com.koubeiradar.app.settings.PoiProvider
 import com.koubeiradar.app.settings.ScoringPreset
 import com.koubeiradar.app.ui.UiText
 import com.koubeiradar.core.model.Criteria
 import com.koubeiradar.core.model.ScoredShop
 import com.koubeiradar.data.ShopSourceException
 
-enum class SourceKind { DEMO, AMAP }
+enum class SourceKind(val provider: PoiProvider?) {
+    DEMO(null),
+    AMAP(PoiProvider.AMAP),
+    BAIDU(PoiProvider.BAIDU),
+    ;
+
+    companion object {
+        fun of(provider: PoiProvider?): SourceKind = entries.first { it.provider == provider }
+    }
+}
 
 sealed interface LoadState {
     data object Loading : LoadState
@@ -41,6 +51,8 @@ sealed interface HomeContent {
 
 data class HomeUiState(
     val source: SourceKind = SourceKind.DEMO,
+    /** The selected provider, even while the demo data is shown; names the key a typed address needs. */
+    val poiProvider: PoiProvider = PoiProvider.AMAP,
     val place: PlaceState = PlaceState.Unknown,
     val locating: Boolean = false,
     val preset: ScoringPreset = ScoringPreset.REPUTATION_FIRST,

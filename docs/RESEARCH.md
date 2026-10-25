@@ -14,7 +14,7 @@
    - 判口碑：LLM 直接读评价找雷点，比训练情感模型省事得多。
    - 理解需求：一句话 → 筛选条件。
    - 但**打分与排序必须是确定性的、可解释的**，LLM 只做外壳。
-4. 默认数据源用**高德官方 POI 接口**（有评分与人均），外卖特有数据（评价数、月售、配送）靠"导入"通道补。
+4. 数据源用**高德或百度的官方 POI 接口**（二选一，默认高德：评分与人均；百度另有评价数 `comment_num`），外卖特有数据（月售、配送、评价原文）靠"导入"通道补。
 
 ## 2. 项目清单
 
@@ -60,19 +60,20 @@
 |---|---|---|
 | [高德 Web 服务·搜索 POI 2.0](https://lbs.amap.com/api/webservice/guide/api-advanced/newpoisearch) | `GET /v5/place/around`；`types=050000`（餐饮服务）；`show_fields=business` 返回 `rating`、`cost`（仅餐饮/酒店/景点/影院）、`tag`、营业时间等；`page_size` ≤ 25；同条件最多取 200 条 | **默认数据源**。缺评价数/月售/配送信息 |
 | [高德 MCP Server](https://lbs.amap.com/api/mcp-server/summary) | 官方存在（列出 17 项能力：关键词搜索、周边搜索、详情等）；文档页未写明接入 URL，也未提 rating/cost | 本项目在 App 内直接调 REST，不引入 MCP |
-| 百度地图地点检索 | 文档页重定向，**未能核实**评分字段 | 列入路线图 |
+| [百度地图 Web 服务·地点检索](https://lbsyun.baidu.com/faq/api?title=webapi/guide/webservice-placeapiV3/interfaceDocumentV3)（2026-10-25 复核） | 官方现行的 `GET /place/v3/around`（圆形区域检索）：`query`（如 `美食`）、`type`（二次筛选）、`location=纬度,经度`、`radius`、`radius_limit`、`scope=2`、`filter`、`coord_type=2` 输入 GCJ-02、`ret_coordtype=gcj02ll` 返回 GCJ-02（默认 BD-09）、`page_size` 10–20、`page_num` 从 0 起、`total` ≤ 150；返回 `overall_rating`（评分）、`comment_num`（**评价数**）、`price`、`shop_hours`、`classified_poi_tag`，均为字符串；状态码表见[附录](https://lbsyun.baidu.com/index.php?title=webapi/appendix)；地理编码 `/geocoding/v3/`。官方页没有示例响应、对 `detail_info` 的嵌套没有说明。2.0 的圆形检索页在沙箱里只会重定向到首页，所以不用 2.0 | **已接入**（第二数据源），逐项核实状态与未验证部分见 [DESIGN.md §3.4](DESIGN.md) |
+| 腾讯位置服务 | POI 数据没有评分字段（调研结论，本次未重新抓取其文档） | 不接入 |
 
 ## 3. 方案取舍
 
 | 路线 | 稳定性 | 合规 | 数据含量 | 工程量 | 结论 |
 |---|---|---|---|---|---|
 | A. 逆向/爬取美团饿了么（GitHub 现有爬虫） | 低（反爬、签名、字体加密） | **差** | 高 | 高且持续 | ✗ |
-| B. 高德 POI 官方接口 | 高 | 好 | 中（有评分/人均，无评价数/配送） | 低 | ✓ 默认 |
+| B. 高德 / 百度 POI 官方接口 | 高 | 好 | 中（有评分/人均；百度另有评价数；都无配送） | 低 | ✓ 默认（二选一） |
 | C. 用户导入（截图/文本）+ 多模态 LLM 抽取 | 高 | 好（用户自己浏览） | 高（月售、配送、评价原文） | 低（一个提取器） | ✓ 补充 |
 | D. GUI 智能体（Open-AutoGLM 等）替用户翻页 | 中 | 灰（平台条款、需人工接管） | 高 | 中（环境搭建） | 可选桥接，见 [GUI_AGENT_BRIDGE.md](GUI_AGENT_BRIDGE.md) |
 | E. 平台联盟 API | — | 好 | 无店铺评分 | — | ✗ |
 
-最终：**B 打底，C 补强，D 留作可选桥接；打分内核确定性，智能体做外壳。**详见 [DESIGN.md](DESIGN.md)。
+最终：**B 打底（高德或百度），C 补强，D 留作可选桥接；打分内核确定性，智能体做外壳。**详见 [DESIGN.md](DESIGN.md)。
 
 ## 4. 评分方法的依据
 

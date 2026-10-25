@@ -15,7 +15,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.koubeiradar.app.R
+import com.koubeiradar.app.settings.PoiProvider
 import com.koubeiradar.app.settings.ScoringPreset
+
+@StringRes
+fun PoiProvider.labelRes(): Int = when (this) {
+    PoiProvider.AMAP -> R.string.poi_provider_amap
+    PoiProvider.BAIDU -> R.string.poi_provider_baidu
+}
 
 @StringRes
 fun ScoringPreset.labelRes(): Int = when (this) {

@@ -1,6 +1,7 @@
 package com.koubeiradar.app.service
 
 import com.koubeiradar.app.settings.AppSettings
+import com.koubeiradar.app.settings.PoiProvider
 import com.koubeiradar.app.settings.ScoringPreset
 import com.koubeiradar.core.model.GeoPoint
 import com.koubeiradar.core.scoring.ReputationScorer
@@ -10,6 +11,8 @@ import com.koubeiradar.data.Geocoder
 import com.koubeiradar.data.ShopSource
 import com.koubeiradar.data.amap.AmapGeocoder
 import com.koubeiradar.data.amap.AmapShopSource
+import com.koubeiradar.data.baidu.BaiduGeocoder
+import com.koubeiradar.data.baidu.BaiduShopSource
 import com.koubeiradar.data.demo.DemoShopSource
 import okhttp3.OkHttpClient
 import java.util.concurrent.ConcurrentHashMap
@@ -24,21 +27,27 @@ val DEMO_CENTER = GeoPoint(lat = 39.9087, lng = 116.3975)
 
 /** Builds the shop source and geocoder that match the current settings. */
 interface DataSources {
-    /** Amap when a key is configured and the demo switch is off, the offline demo data otherwise. */
+    /** The selected provider (Amap or Baidu) when its key is configured and the demo switch is off, the offline demo data otherwise. */
     fun sourceFor(settings: AppSettings): ShopSource
 
-    /** Address lookup needs the Amap key and is off while the demo data is forced; `null` then. */
+    /** Address lookup needs the selected provider's key and is off while the demo data is forced; `null` then. */
     fun geocoderFor(settings: AppSettings): Geocoder?
 }
 
 class DefaultDataSources(private val http: OkHttpClient) : DataSources {
     private val demo = DemoShopSource()
 
-    override fun sourceFor(settings: AppSettings): ShopSource =
-        if (settings.usesAmap) AmapShopSource(settings.amapKey.value, http) else demo
+    override fun sourceFor(settings: AppSettings): ShopSource = when (settings.activePoi) {
+        PoiProvider.AMAP -> AmapShopSource(settings.amapKey.value, http)
+        PoiProvider.BAIDU -> BaiduShopSource(settings.baiduKey.value, http)
+        null -> demo
+    }
 
-    override fun geocoderFor(settings: AppSettings): Geocoder? =
-        if (settings.usesAmap) AmapGeocoder(settings.amapKey.value, http) else null
+    override fun geocoderFor(settings: AppSettings): Geocoder? = when (settings.activePoi) {
+        PoiProvider.AMAP -> AmapGeocoder(settings.amapKey.value, http)
+        PoiProvider.BAIDU -> BaiduGeocoder(settings.baiduKey.value, http)
+        null -> null
+    }
 }
 
 /** The ranker for a scoring preset. Scorer and selector are rebuilt only when the preset changes. */

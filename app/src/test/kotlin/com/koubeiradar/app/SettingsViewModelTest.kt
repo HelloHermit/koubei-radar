@@ -7,6 +7,7 @@ import com.koubeiradar.app.settings.AppSettings
 import com.koubeiradar.app.settings.InputProblem
 import com.koubeiradar.app.settings.Meal
 import com.koubeiradar.app.settings.MealNotificationSettings
+import com.koubeiradar.app.settings.PoiProvider
 import com.koubeiradar.app.settings.SavedPlace
 import com.koubeiradar.app.settings.ScoringPreset
 import com.koubeiradar.app.settings.Secret
@@ -50,6 +51,51 @@ class SettingsViewModelTest {
         val events = mutableListOf<SettingsEvent>()
         backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { viewModel.events.collect { events += it } }
         return events
+    }
+
+    @Test
+    fun `the baidu key is stored apart from the amap key and only its status is exposed`() = runTest {
+        val viewModel = viewModel()
+
+        assertNull(viewModel.submit(SettingField.BAIDU_KEY, "  baiduak1234567890abcd \n"))
+        advanceUntilIdle()
+
+        assertEquals("baiduak1234567890abcd", settings.current.baiduKey.value)
+        assertFalse(settings.current.amapKey.isSet)
+        assertEquals(KeyStatus(isSet = true, tail = "abcd"), viewModel.uiState.value.baiduKey)
+        assertEquals(KeyStatus.NOT_SET, viewModel.uiState.value.amapKey)
+        assertEquals(InputProblem.CONTAINS_WHITESPACE, viewModel.submit(SettingField.BAIDU_KEY, "a b"))
+        assertEquals(InputProblem.EMPTY, viewModel.submit(SettingField.BAIDU_KEY, "  "))
+
+        viewModel.clearCredential(SettingField.BAIDU_KEY)
+        advanceUntilIdle()
+        assertFalse(settings.current.baiduKey.isSet)
+    }
+
+    @Test
+    fun `choosing the poi provider is saved and shown`() = runTest {
+        val viewModel = viewModel()
+        advanceUntilIdle()
+        assertEquals(PoiProvider.AMAP, viewModel.uiState.value.poiProvider)
+
+        viewModel.setPoiProvider(PoiProvider.BAIDU)
+        advanceUntilIdle()
+
+        assertEquals(PoiProvider.BAIDU, settings.current.poiProvider)
+        assertEquals(PoiProvider.BAIDU, viewModel.uiState.value.poiProvider)
+    }
+
+    @Test
+    fun `clearing all credentials also removes the baidu key`() = runTest {
+        settings.state.value = AppSettings(amapKey = Secret("a-key-1234567890"), baiduKey = Secret("b-key-1234567890"), poiProvider = PoiProvider.BAIDU)
+        val viewModel = viewModel()
+
+        viewModel.clearAllCredentials()
+        advanceUntilIdle()
+
+        assertFalse(settings.current.baiduKey.isSet)
+        assertFalse(settings.current.amapKey.isSet)
+        assertEquals(PoiProvider.BAIDU, settings.current.poiProvider, "the choice itself is not a credential")
     }
 
     @Test

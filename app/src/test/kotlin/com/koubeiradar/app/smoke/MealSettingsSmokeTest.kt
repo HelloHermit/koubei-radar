@@ -53,7 +53,8 @@ class MealSettingsSmokeTest : SmokeTestBase() {
         openSettings()
         scrollTo(string(R.string.settings_meals_test_summary))
 
-        compose.onNodeWithContentDescription(string(R.string.settings_meals_lunch)).performClick()
+        // The switch sits above the row scrolled to; a click at an off-screen node's coordinates would silently miss.
+        compose.onNodeWithContentDescription(string(R.string.settings_meals_lunch)).performScrollTo().performClick()
         settle()
 
         waitFor("lunch to be stored as on") { meals().lunchEnabled }

@@ -29,9 +29,9 @@
         ┌───────▼────────┐        ┌─────────▼──────────┐       ┌────────▼─────────┐
         │ :agent (JVM)   │        │ :data (JVM)        │       │ :core (JVM)      │
         │ LlmClient 抽象 │        │ ShopSource 接口     │       │ Shop/Criteria 模型│
-        │  ├ Anthropic   │        │  ├ AmapShopSource  │       │ ReputationScorer │
+        │  ├ Anthropic   │        │  ├ Amap / Baidu    │       │ ReputationScorer │
         │  └ OpenAI兼容  │──────► │  └ DemoShopSource  │─────► │ ShopSelector     │
-        │ ShopAdvisor    │        │ AmapGeocoder       │       │ (纯函数、可测试)  │
+        │ ShopAdvisor    │        │ Amap/BaiduGeocoder │       │ (纯函数、可测试)  │
         │ ShopImport     │        │ ShopRepository(池) │       └──────────────────┘
         └────────────────┘        └────────────────────┘
 ```
@@ -40,7 +40,7 @@
 
 - **确定性内核 + 智能体外壳**。打分/筛选是纯函数（`:core`），没有 LLM、没有 API Key 也能用；智能体只负责三件事：把自然语言翻成筛选条件、阅读评价文本找"雷点"、把截图/文本变成结构化数据。LLM 挂了，App 回退到确定性排序，不会白屏。
 - **三个逻辑模块都是纯 Kotlin/JVM**，不依赖 Android，可以在 CI 里秒级单测；`:app` 只剩 UI 与系统胶水。
-- **数据源可插拔**（`ShopSource`）：默认高德 POI（官方、合规、稳定），"导入"通道补充外卖平台特有数据（月售、配送时间、评价原文）。
+- **数据源可插拔**（`ShopSource`）：高德 / 百度 POI 二选一（官方、合规、稳定；设置里切换，默认高德；百度多一个评价数），"导入"通道补充外卖平台特有数据（月售、配送时间、评价原文）。
 - **LLM 可插拔**（`LlmClient`）：Claude 走官方 `anthropic-java` SDK；国内常用的 DeepSeek/通义/智谱/Kimi 走 OpenAI 兼容协议。
 
 ## 3. 数据层（`:data`）
@@ -104,6 +104,59 @@ UI 与智能体共享的内存池 = **附近店铺（来自 ShopSource）∪ 导
 
 - 名称归一化：小写、去空白与标点、全/半角括号统一。先按归一化全名精确匹配；匹配不到时，若去掉末尾括号分店后缀后**恰好唯一**匹配，也合并。
 - 合并时外卖特有字段（评分、评价数、月售、配送、起送价、评价原文、platforms）**以导入为准**；位置、地址、电话、分类缺失时用附近数据补；合并后沿用导入的 id。
+
+### 3.4 百度地图 POI 数据源 `BaiduShopSource`
+
+为什么要它：高德 POI 没有评价数，`ReputationScorer` 算不出置信分（§4.4）；百度「地点检索」圆形检索（`scope=2`）返回 `comment_num`（评论数）、`overall_rating`（综合评分）、`price`、`shop_hours`。腾讯位置服务的 POI 数据没有评分字段（任务背景里的调研结论，本次实现没有重新抓取其文档），所以不做腾讯适配器。
+
+**核实情况**（2026-10-25）。端点用官方现行的**地点检索 3.0 圆形区域检索** `GET https://api.map.baidu.com/place/v3/around`；它的请求参数与返回字段在官方页 `lbsyun.baidu.com/faq/api?title=webapi/guide/webservice-placeapiV3/interfaceDocumentV3` 里逐项读到（2.0 的圆形检索页在本次沙箱里只会 302 到首页，所以不再依赖 2.0）。状态码表读自 `lbsyun.baidu.com/index.php?title=webapi/appendix`，地理编码读自 `lbsyun.baidu.com/index.php?title=webapi/guide/webservice-geocoding`。"官方文档核实" = 在上述 lbsyun.baidu.com 官方页读到；其余逐项标明。
+
+| 项 | 取值 | 状态 |
+|---|---|---|
+| 端点 | `GET https://api.map.baidu.com/place/v3/around`，仅支持 `output=json`，`ak` 必填（`sn` 未用） | 官方文档核实 |
+| 检索词 | `query` 必填，按 POI 分类检索时把分类放进 `query`（"如 query=美食"）；`type` 对 `query` 结果二次筛选（页面示例 "query=美食 type=火锅（用于泛搜索场景）"，"query 和 type 支持只填一项"）。本实现：`query=美食`，`NearbyQuery.keyword` 非空时再加 `type=<keyword>`。3.0 没有 `tag` 参数 | 官方文档核实（参数与示例）；"自由文本关键字（品牌名等）放进 `type` 是否有结果"页面写的是"建议参考 POI 分类内容"，**未用真实请求验证** |
+| 中心点与半径 | `location=纬度,经度`（**纬度在前**，单点）；`radius` 单位米，默认 1000，"超出中心点所在城市边界会变为城市范围检索"；`radius_limit=true` "严格限定召回结果在半径内"（本实现发送） | 官方文档核实。页面**没有写半径上限**：本实现自设 1–50000 的保护范围，并丢弃 `distance` 超出 `radius` 的结果 |
+| 输入坐标系 | `coord_type`：1 wgs84ll、**2 gcj02ll**、3 bd09ll（默认）、4 bd09mc；本实现发 `coord_type=2` | 官方文档核实 |
+| 返回坐标系 | `ret_coordtype=gcj02ll`（"添加后 POI 返回国测局经纬度坐标"；不加则为 bd09ll） | 官方文档核实（3.0 页与地理编码页） |
+| 详细度 | `scope`：空或 1 基本信息，2 "返回检索 POI 详细信息"；本实现发 `scope=2` | 官方文档核实 |
+| 排序 | `filter=industry_type:cater\|sort_name:distance\|sort_rule:1`：`industry_type` ∈ hotel/cater/life，`sort_name` ∈ default/price/overall_rating/distance，`sort_rule` 0 从高到低、1 从低到高 | 官方文档核实（格式与取值）。页面对 `distance` 写的是"需结合 center 字段一起使用"，而圆形检索没有 `center` 参数——本实现按"中心点 = `location`"理解，**未用真实请求验证**；无论服务端是否排序，本地都会再按距离排序 |
+| 分页 | `page_size` 默认 10、取值 10–20；`page_num` 默认 0、**从 0 起**；`total` 仅在带 `page_num` 时返回、单次最多 150 | 官方文档核实。同一页的 `name` 行写"单次请求最多返回 10 条结果"，与 `page_size` 最大 20 **自相矛盾**，所以本实现固定 `page_size=10`（两种读法都成立），不靠"短页 = 最后一页"判断，而看 `total`（缺失时才用短页）、空页和最多 15 页 |
+| 响应顶层 | `status`（int，0 成功）、`message`（成功为 `ok`）、`total`（int）、`results[]`；本实现同时接受字符串形式的 `status` / `total` | 官方文档核实 |
+| POI 字段 | `uid`、`name`、`location{lat,lng}`（float）、`address`、`telephone`、`distance`（int32，"圆形区域检索时返回"）、`type`（hotel/cater/life）、`classified_poi_tag`（"POI 展示分类（细致分类）"）、`label`、`brand`、`status`（营业状态，非请求状态） | 官方文档核实 |
+| 评分字段 | `overall_rating`（"poi 的综合评分"）、`comment_num`（"poi 的评论数"）、`price`（"poi 商户的价格"）、`shop_hours`（"poi 的营业时间"，示例 `10:30-14:00,16:30-22:00`），类型均为 string | 官方文档核实（字段名、含义、string 类型） |
+| `detail_info` 的嵌套 | 页面把 `detail_info` 标为 object（"详细信息"），上面的评分字段列在它之后，但**没有示例响应、也没有缩进/层级说明**，不能确定它们在 `detail_info` 里还是平铺在 POI 上 | **页面未说明**；解析时先读 `detail_info`、再读 POI 本身，两种形状都支持。社区代码（HuggingFace `UrbanFlow-DataAnalysis-Public/foodlist.py`，2.0 端点）读的是 `item['detail_info']['overall_rating']` / `price` / `shop_hours`，与"嵌套"一致 |
+| 营业时间格式 | 官方只给了 `10:30-14:00,16:30-22:00` 一个示例 | 其余格式（"周一至周日 10:00-22:00"、空串）一律 `openNow = null`，不会抛异常 |
+| 状态码 | 见下表 | 官方文档核实 |
+| 地理编码 | `GET /geocoding/v3/?address=&city=&ret_coordtype=gcj02ll&output=json&ak=`；成功 `{"status":0,"result":{"location":{"lng","lat"},"precise","confidence","comprehension","level"}}`；`address` 官方页写"最多 128 字节"（不截断，超长由服务端报 `status=2`） | 官方文档核实 |
+| 地理编码无结果 | `{"status":1,"msg":"Internal Service Error:无相关结果"}`（注意文本键是 `msg`） | 社区来源，未核实；本实现把 `status=1` 且文本含"无相关结果"当作"没找到"（返回 `null`），其余 `status=1` 仍是错误 |
+| AK 类型与限制 | 需**服务端** AK；IP 白名单不通过 → 210，SN 校验不通过 → 211 | 状态码含义官方文档核实；"手机端调用时不要设置 IP 白名单、不要开 SN"是据此的推论，**没有真实 AK 验证**；本实现不做 SN 签名 |
+
+状态码映射到 `ShopSourceException.Kind`（`status != 0`）：
+
+| status（官方含义） | Kind |
+|---|---|
+| 3 权限校验失败、5 AK 不存在或非法、9 高级权限校验失败、101 缺少 AK、102 不通过白名单或安全码不对（地理编码页）、2xx（200 APP 不存在、201 被用户禁用、202 被管理员删除、203 APP 类型错误、**210 IP 校验失败**、**211 SN 校验失败**、240 APP 服务被禁用、250–252 用户不存在/被删/被拉黑、260–261 服务不存在/被禁用） | `AUTH` |
+| 4 配额校验失败、302 天配额超限、401 并发超限，及其余 3xx | `QUOTA` |
+| 1 服务器内部错误、2 请求参数非法、8 数据解析失败、其他 | `OTHER` |
+| HTTP 非 2xx、`IOException`/超时 | `NETWORK` |
+| 非 JSON、缺少 `status`、`results` 形状不对 | `PARSE` |
+
+映射到 `Shop`（`Shop.source = "baidu"`）：
+
+| Shop 字段 | 来源 / 规则 |
+|---|---|
+| `id` | `"baidu:" + uid`；无 uid / 名称 / 可用坐标的 POI 跳过，同 uid 去重 |
+| `rating` | `overall_rating` 转 Double，仅接受 (0,5] |
+| `ratingCount` | `comment_num` 转整数，仅接受 ≥ 0（空串/非数字 → `null`） |
+| `avgPrice` | `price` 转 Double，仅接受 > 0 |
+| `distanceMeters` | `distance`，≥ 0；超出 `radius` 的 POI 丢弃 |
+| `location` | `location.{lat,lng}` → `GeoPoint`；因为请求带 `ret_coordtype=gcj02ll`，已是 GCJ-02 |
+| `category` / `tags` | `classified_poi_tag`（没有时退回详情接口里的 `tag`）按 `;,，、；` 切分，最后一段为 category；两者都没有时仅当 `type` 含非 ASCII 字符才采用；tags 去重最多 6 个 |
+| `openNow` | `shop_hours` 交给与高德共用的 `OpeningHours`（按 `Asia/Shanghai`）；识别不了的格式（"周一至周日 10:00-22:00"、空串）→ `null`，不会抛异常 |
+| `phone` | `telephone` 的第一个号码 |
+| `monthlySales` / `platforms` / `reviews` | 百度不提供 → `null` / 空 / 空 |
+
+解析一律容忍：数字可能是字符串、数字或 `""`，`detail_info` 可能缺失（此时只有名称、地址、位置，没有评分），字段也可能直接平铺在 POI 上。分页：`page_size=10`，从 `page_num=0` 起，直到空页、`total` 已取完（没有 `total` 时看短页）或凑够 `limit`，最多 15 页；按距离升序、取前 `limit`。AK 只出现在请求 URL 里，任何异常消息与 cause 都不含它（`***` 替换）。
 
 ## 4. 口碑评分（`:core`）
 
@@ -231,18 +284,18 @@ UI 与智能体共享的内存池 = **附近店铺（来自 ShopSource）∪ 导
 
 | 页面 | 内容 |
 |---|---|
-| 推荐（首页） | 顶部：当前位置（可点击手动输入地址→高德地理编码）、数据源标签、刷新。筛选条件摘要 chips（点击进入条件面板）+ 评分偏好预设（口碑优先/性价比/速度）。列表：店名、综合分环、结论徽标、★评分与评价数、人均、距离/送达、最多 2 条理由、红色警告。按钮：「去点单」（选平台→复制店名→拉起 App）。空/加载/错误态齐全 |
+| 推荐（首页） | 顶部：当前位置（可点击手动输入地址→所选数据源的地理编码）、数据源标签（高德地图 / 百度地图 / 演示数据）、刷新。筛选条件摘要 chips（点击进入条件面板）+ 评分偏好预设（口碑优先/性价比/速度）。列表：店名、综合分环、结论徽标、★评分与评价数、人均、距离/送达、最多 2 条理由、红色警告。按钮：「去点单」（选平台→复制店名→拉起 App）。空/加载/错误态齐全 |
 | 智能体 | 聊天式：输入框 + 示例提示；执行时显示步骤日志（`AgentEvent`）；结果为推荐卡片（理由/可点菜/避雷提示）+ 总结；可追问（带 `previousTurns`）。未配置 Key 时引导去设置；调用失败回退到确定性排序并提示 |
 | 导入 | 选图（系统 Photo Picker，多选）/ 粘贴文本 / 接收系统「分享」（`ACTION_SEND` `text/plain`、`image/*`）→「识别」→ 预览提取结果与说明 →「加入候选池」 |
 | 详情 | 综合分与分项条形图（评分/置信/口碑文本/性价比/便利/罚分）、理由、警告、评价原文（若有，标注"用户生成内容"）、去点单 |
-| 设置 | 高德 Key、LLM 提供商（Claude / OpenAI 兼容预设）、Base URL、模型、识图模型、Key（Keystore 加密保存）、默认筛选条件、评分预设、**每日推荐**（午/晚饭开关与时间、仅工作日、测试通知）、使用演示数据开关、隐私说明、清空数据 |
+| 设置 | **地图数据源（高德 / 百度，默认高德，旧版本保存的设置读作高德）** 及所选数据源的 Key（高德「Web 服务」Key / 百度「服务端」AK，两把分别保存，切换不会丢）、LLM 提供商（Claude / OpenAI 兼容预设）、Base URL、模型、识图模型、Key（Keystore 加密保存）、默认筛选条件、评分预设、**每日推荐**（午/晚饭开关与时间、仅工作日、测试通知）、使用演示数据开关、隐私说明、清空数据 |
 
 安全与合规实现要点：
-- 密钥：AndroidKeyStore 的 AES-GCM 密钥加密后存 DataStore；`allowBackup=false`；日志不得输出 Key；
+- 密钥（高德 Key、百度 AK、LLM Key）：AndroidKeyStore 的 AES-GCM 密钥加密后存 DataStore，`Secret` 的 `toString` 不含内容；`allowBackup=false`；日志不得输出 Key；
 - 仅 HTTPS（`usesCleartextTraffic=false`）；
 - 权限：`INTERNET` + 位置（运行时申请，拒绝时走手动地址）+ `POST_NOTIFICATIONS`（Android 13+，打开每日推荐开关时才申请）；无后台定位、无精确闹钟权限；`<queries>` 声明三款外卖 App 包名；
 - 拉起外卖 App：复制店名到剪贴板 → 按包名 `getLaunchIntentForPackage`；未安装则提示。**不依赖私有 deeplink**。
-- 位置只用于高德检索（每日推荐在本机用上次的位置检索）；发给 LLM 的只有用户输入、候选店铺字段与用户主动提供的截图/文本。
+- 位置只用于所选地图服务（高德或百度）的检索（每日推荐在本机用上次的位置检索）；发给 LLM 的只有用户输入、候选店铺字段与用户主动提供的截图/文本。
 
 ### 7.1 每日定时推荐通知
 
@@ -250,13 +303,13 @@ UI 与智能体共享的内存池 = **附近店铺（来自 ShopSource）∪ 导
 
 - **调度**：WorkManager，每顿饭一个唯一 `OneTimeWorkRequest`（`ExistingWorkPolicy.REPLACE`），`initialDelay` 由 `MealSchedule.nextTrigger(now, time, weekdaysOnly)`（严格晚于 now，仅工作日跳过周六日，夏令时空档取空档之后）算出。**不用精确闹钟**，所以是"大约"这个时间（Doze 可能晚几分钟，UI 也这么写）；晚了超过 90 分钟（如关机后才开机）的那一次直接跳过，不播报已经过去的饭点。每次运行在末尾排下一天的请求，发送失败也照排；运行被取消则不排（取消者负责排）。请求带 `trigger:<epoch>` 标签，`AppContainer` 启动时与每次餐食设置变化时调用 `sync`：运行中、已到点或正在退避重试的请求不动，时间不对（改了设置、换了时区）才替换，避免把正要发通知的那次运行取消掉。WorkManager 跨重启保留请求；时区变化要到下次打开 App 才修正（已知限制）。
 - **位置**：不申请后台定位。主页每次得到位置（定位或输入地址）就把它存成 `SavedPlace`（GCJ-02，非密钥，存在 DataStore 设置里；设备定位带 `fromDevice`，不会在无权限的冷启动里被当成输入的地址恢复）。没有保存的位置 → 发一条"打开口碑雷达设置位置，就能收到每日推荐"。
-- **推荐**：`MealRecommendation` 用例（无 Android 依赖，可在 JVM 测）：与主页相同的数据源选择（有 Key 且未强制演示用高德，否则演示数据）、候选池、默认筛选条件与评分预设、`ShopSelector` 排序；跳过 `AVOID` / `INSUFFICIENT_DATA`，取前 3；一家都不剩就不发。**不调用 LLM。** 网络失败 → `Result.retry()`（最多再试 2 次，线性退避 5 分钟），之后放弃当天；鉴权、配额等失败不重试。`MealDelivery` 持有这些决定，`MealWorker` 与 `AndroidMealNotifier` 只是薄封装。
+- **推荐**：`MealRecommendation` 用例（无 Android 依赖，可在 JVM 测）：与主页相同的数据源选择（所选地图数据源有 Key 且未强制演示就用它，否则演示数据；`DataSources` 统一决定）、候选池、默认筛选条件与评分预设、`ShopSelector` 排序；跳过 `AVOID` / `INSUFFICIENT_DATA`，取前 3；一家都不剩就不发。**不调用 LLM。** 网络失败 → `Result.retry()`（最多再试 2 次，线性退避 5 分钟），之后放弃当天；鉴权、配额等失败不重试。`MealDelivery` 持有这些决定，`MealWorker` 与 `AndroidMealNotifier` 只是薄封装。
 - **权限与渠道**：打开开关时若没有通知权限，先弹说明再请求系统权限；被拒则开关保持关闭并给出"打开系统设置"。已开启后权限或渠道被用户关掉，设置页会提示，通知不会静默丢失。渠道 `meal_recommendations`（"每日推荐"，默认重要性）在启动时创建。
-- **隐私**：上次的位置只在本机；推荐在本机计算；没有任何新的数据发给 AI 服务商（使用高德数据时，到点会像打开主页一样把这个位置发给高德）。
+- **隐私**：上次的位置只在本机；推荐在本机计算；没有任何新的数据发给 AI 服务商（使用真实数据时，到点会像打开主页一样把这个位置发给所选的地图服务（高德或百度））。
 
 ## 8. 合规与风险
 
-- **数据来源**：默认只用高德官方 API 与用户主动提供的内容。GitHub 上现有的美团/点评爬虫（见 RESEARCH.md）多为"仅限学习交流、禁止商用"，依赖逆向与反反爬，随时失效且违反平台条款，**不采用**。
+- **数据来源**：只用高德 / 百度的官方 API 与用户主动提供的内容。GitHub 上现有的美团/点评爬虫（见 RESEARCH.md）多为"仅限学习交流、禁止商用"，依赖逆向与反反爬，随时失效且违反平台条款，**不采用**。
 - **GUI 智能体自动化**（Open-AutoGLM、Mobilerun 等）：只作为可选的、用户自担风险的桥接方案；这些项目自身声明"仅供研究学习"，且平台可能限制自动化操作。支付/登录必须人工接管。
 - **隐私**：截图会上传给你选择的 LLM 提供商——导入页明示；不上传位置到 LLM。每日推荐只用本机保存的上次位置，在本机计算，不读后台定位（见 §7.1）。
 - **口碑不是真理**：分数是证据加权的启发式，不构成对商家的事实断言；UI 文案用"口碑优秀/建议避开"，并列出依据。
@@ -267,17 +320,17 @@ UI 与智能体共享的内存池 = **附近店铺（来自 ShopSource）∪ 导
 | 层 | 做法 | 数量 |
 |---|---|---|
 | `:core` | 评分的性质测试（单调性、边界、null 处理、红线词与否定词、满分少评、权重归一、预设）+ 筛选语义（Criteria 每个字段与 null 规则、并列排序、垃圾输入不出 NaN、确定性） | 146 |
-| `:data` | MockWebServer 覆盖高德正常 / `[]` 空字段 / 翻页上限 / 各 infocode / 超时 / 畸形 JSON / 取消；营业时间（含跨午夜）；演示数据样本；仓库合并、缓存 TTL、并发；**集成：演示数据 → 候选池 → 真实 `ShopSelector`，样本结论与 §3.2 表一致** | 156 |
+| `:data` | MockWebServer 覆盖高德正常 / `[]` 空字段 / 翻页上限 / 各 infocode / 超时 / 畸形 JSON / 取消，百度（字符串形式的数字、缺 `detail_info`、翻页、去重、状态码表、AK 脱敏含非 JSON 响应、超时、取消、实际发出的坐标参数）；营业时间（含跨午夜）；演示数据样本；仓库合并、缓存 TTL、并发；**集成：演示数据 → 候选池 → 真实 `ShopSelector`，样本结论与 §3.2 表一致；百度夹具 → 候选池 → 真实 `ShopSelector`，有评价数的店得到置信分、没有的（高德式）没有** | 216 |
 | `:agent` | 假 LLM 脚本化跑完整循环（并行工具、提醒一次、兜底、未知 shop_id 纠错、提示注入）；两个客户端用 MockWebServer 验证线协议（Claude 为 SSE 流：thinking 签名与分片入参重组、流中途 `error`、断流、取消即断开连接，以及 thinking 块回放、`is_error`、工具结果合并；OpenAI `arguments` 字符串）；**端到端：真实工具 + 真实候选池 + 真实打分器 + 脚本化模型** | 155 |
-| `:app` | ViewModel（假服务）、设置与加密、坐标转换、分享入口与限额、持久化；**Robolectric 冒烟测试**：真实 `MainActivity`/`AppContainer` 启动到首帧、各标签与详情/设置导航、旋转重建、分享入口、无 Key 引导、权限被拒、1.5 倍字体、暗色，并产出截图；**每日推荐**：`nextTrigger` 边界（严格晚于、周末、跨月年、夏令时）、用例决定（无位置/无店/避雷/文案/重试）、设置持久化与旧版本兼容、WorkManager 请求与通知（Robolectric） | 251 |
+| `:app` | ViewModel（假服务）、设置与加密（含数据源选择、百度 AK、旧版设置兼容）、数据源选择、坐标转换、分享入口与限额、持久化；**Robolectric 冒烟测试**：真实 `MainActivity`/`AppContainer` 启动到首帧、各标签与详情/设置导航、旋转重建、分享入口、无 Key 引导、权限被拒、1.5 倍字体、暗色，并产出截图；**每日推荐**：`nextTrigger` 边界（严格晚于、周末、跨月年、夏令时）、用例决定（无位置/无店/避雷/文案/重试）、设置持久化与旧版本兼容、WorkManager 请求与通知（Robolectric） | 265 |
 
 冒烟测试在 JVM 上跑，**不等于真机**：真实 AndroidKeyStore、软键盘/窗口边距、真实定位、动态取色都没有覆盖。它们发现并修复了 3 个真实缺陷（异常的分享提供方让导入页崩溃；分享到达时已存活的导入页不会切换标签；提示条按钮白底白字），评审中又加固了持久化写线程（任何异常都不会让它静默停止）；两位独立评审者另外复现并修复了 10 个缺陷（见 README），其回归测试在 `reviewer/`、`review/` 包下；其中 R1a/R1e 验证取消 Claude 调用会真的断开连接（响应头之前的限制见 §5.5）。
 
-未验证：真实高德/Claude/OpenAI 兼容接口（只有 MockWebServer）、Anthropic SDK 在 Android 上的运行与 R8 规则、外卖 App 包名、评分对真实数据的校准。
+未验证：真实高德/百度/Claude/OpenAI 兼容接口（只有 MockWebServer；百度 3.0 圆形检索的评分字段嵌套形状（页面无示例）、`type` 作关键字筛选与 `sort_name:distance` 的实际效果、每页实际条数、地理编码无结果的返回、真实 AK 的 IP 白名单/SN 限制，见 §3.4）、Anthropic SDK 在 Android 上的运行与 R8 规则、外卖 App 包名、评分对真实数据的校准。
 
 ## 10. 路线图
 
 1. 评价趋势（近 30 天 vs 历史）、店铺历史快照对比；
 2. 端侧 GUI 智能体（无障碍服务，参考 Mobilerun Portal / OpenGUI 的做法）自动读取外卖 App 列表，仍以"用户本机、本人账号、人工确认"为前提；
-3. 百度/腾讯 POI 适配器；
+3. ~~百度 POI 适配器~~（已做，§3.4）；腾讯位置服务的 POI 没有评分，不做；
 4. R8 混淆规则（Anthropic SDK / Jackson）。

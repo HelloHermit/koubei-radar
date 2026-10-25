@@ -14,6 +14,7 @@ import com.koubeiradar.app.settings.AppSettings
 import com.koubeiradar.app.settings.Checked
 import com.koubeiradar.app.settings.InputProblem
 import com.koubeiradar.app.settings.Meal
+import com.koubeiradar.app.settings.PoiProvider
 import com.koubeiradar.app.settings.SaveResult
 import com.koubeiradar.app.settings.ScoringPreset
 import com.koubeiradar.app.settings.Secret
@@ -78,6 +79,10 @@ class SettingsViewModel(
 
     fun setUseDemoData(enabled: Boolean) {
         viewModelScope.launch { save { it.copy(useDemoData = enabled) } }
+    }
+
+    fun setPoiProvider(provider: PoiProvider) {
+        viewModelScope.launch { save { it.copy(poiProvider = provider) } }
     }
 
     fun setProvider(provider: LlmProvider) {
@@ -182,6 +187,7 @@ class SettingsViewModel(
             save(R.string.settings_msg_keys_cleared) {
                 it.copy(
                     amapKey = Secret.EMPTY,
+                    baiduKey = Secret.EMPTY,
                     anthropic = it.anthropic.copy(apiKey = Secret.EMPTY),
                     openAi = it.openAi.copy(apiKey = Secret.EMPTY),
                 )
@@ -203,7 +209,9 @@ class SettingsViewModel(
 
     private fun AppSettings.toUiState(notificationsAllowed: Boolean, sendingTest: Boolean) = SettingsUiState(
         loaded = true,
+        poiProvider = poiProvider,
         amapKey = KeyStatus.of(amapKey),
+        baiduKey = KeyStatus.of(baiduKey),
         useDemoData = useDemoData,
         provider = provider,
         anthropicKey = KeyStatus.of(anthropic.apiKey),

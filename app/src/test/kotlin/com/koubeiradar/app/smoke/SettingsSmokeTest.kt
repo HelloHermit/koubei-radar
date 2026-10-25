@@ -71,6 +71,25 @@ class SettingsSmokeTest : SmokeTestBase() {
         assertTrue(resultCount()!! < before)
     }
 
+    @Test
+    fun theProviderSelectorOffersBothMapSourcesAndSwitchesTheKeyRow() {
+        launchAndAwaitHome()
+        openSettings()
+
+        assertTrue(shows(string(R.string.settings_poi_provider)))
+        assertTrue(shows(string(R.string.settings_amap_key)))
+        assertFalse(shows(string(R.string.settings_baidu_key)))
+
+        clickText(string(R.string.settings_poi_provider))
+        waitForText(string(R.string.poi_provider_baidu))
+        assertTrue(shows(string(R.string.poi_provider_amap)))
+        clickText(string(R.string.poi_provider_baidu))
+
+        waitForText(string(R.string.settings_baidu_key))
+        waitForGone(string(R.string.settings_amap_key))
+        assertTrue(shows(string(R.string.settings_baidu_hint)))
+    }
+
     private fun openSettings() {
         compose.onNodeWithContentDescription(string(R.string.home_action_settings)).performClick()
         waitForText(string(R.string.settings_section_data))

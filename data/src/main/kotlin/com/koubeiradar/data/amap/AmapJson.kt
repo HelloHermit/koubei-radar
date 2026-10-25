@@ -6,6 +6,8 @@ import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import java.math.BigDecimal
+import java.math.RoundingMode
 
 /**
  * Amap reports "no value" as `[]` about as often as `""` or a missing key, and sends numbers as strings (sometimes as
@@ -32,4 +34,10 @@ internal fun parseLngLat(text: String?): GeoPoint? {
     val lat = parts[1].trim().toFiniteDoubleOrNull() ?: return null
     if (lat !in -90.0..90.0 || lng !in -180.0..180.0) return null
     return GeoPoint(lat = lat, lng = lng)
+}
+
+/** At most six decimals (Amap rejects more), without trailing zeros and never in exponent notation. */
+internal fun formatCoordinate(value: Double): String {
+    val plain = BigDecimal.valueOf(value).setScale(6, RoundingMode.HALF_UP).stripTrailingZeros().toPlainString()
+    return if ('.' in plain) plain else "$plain.0"
 }

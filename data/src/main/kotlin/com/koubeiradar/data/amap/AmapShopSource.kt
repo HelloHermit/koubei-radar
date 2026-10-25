@@ -10,8 +10,6 @@ import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import okhttp3.OkHttpClient
-import java.math.BigDecimal
-import java.math.RoundingMode
 import kotlin.math.roundToInt
 
 /**
@@ -103,12 +101,6 @@ class AmapShopSource(
     private fun parseMeters(text: String): Int? =
         text.toIntOrNull()?.takeIf { it >= 0 }
             ?: text.toFiniteDoubleOrNull()?.takeIf { it >= 0.0 && it <= Int.MAX_VALUE }?.roundToInt()
-
-    /** At most six decimals (Amap rejects more), without trailing zeros and never in exponent notation. */
-    private fun formatCoordinate(value: Double): String {
-        val plain = BigDecimal.valueOf(value).setScale(6, RoundingMode.HALF_UP).stripTrailingZeros().toPlainString()
-        return if ('.' in plain) plain else "$plain.0"
-    }
 
     private companion object {
         const val SOURCE_ID = "amap"
