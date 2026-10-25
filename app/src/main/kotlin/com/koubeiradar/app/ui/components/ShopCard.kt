@@ -12,7 +12,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.ShoppingCart
-import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -112,8 +111,8 @@ private fun RatingFact(rating: Double?, count: Int?) {
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier.semantics(mergeDescendants = true) { contentDescription = description },
     ) {
-        Icon(Icons.Default.Star, contentDescription = null, modifier = Modifier.size(16.dp), tint = MaterialTheme.koubeiColors.warning)
-        Spacer(Modifier.size(2.dp))
+        WhaleRating(rating)
+        Spacer(Modifier.size(6.dp))
         Text(Formatters.rating(rating), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
         if (count != null) {
             Spacer(Modifier.size(4.dp))

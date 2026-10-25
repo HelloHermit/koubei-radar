@@ -12,7 +12,7 @@ Android App：从附近外卖/餐厅里按「口碑」筛店。Kotlin + Jetpack 
 
 评分是确定性、可解释的内核；LLM 只负责听懂需求、读评价、把截图变数据。**不要为了 UI 改动碰 core/data/agent。**
 
-构建：JDK 17+ / compileSdk 37 / `./gradlew test`（820 条，全绿是基线）/ `./gradlew assembleDebug`。
+构建：JDK 17+ / compileSdk 37 / `./gradlew test`（825 条，全绿是基线）/ `./gradlew assembleDebug`。
 
 ---
 

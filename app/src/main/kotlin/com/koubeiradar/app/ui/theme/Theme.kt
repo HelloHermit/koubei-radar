@@ -70,16 +70,20 @@ class KoubeiColors(
     val warning: Color,
     val warningContainer: Color,
     val onWarningContainer: Color,
+    /** The filled whales of a rating (gold_500 / gold_300 of the brand ramp). Decorative: the number next to it carries the value. */
+    val ratingFill: Color,
 )
 
 private val LightKoubeiColors = KoubeiColors(
     success = Color(0xFF2E7D46), successContainer = Color(0xFFC3EFCD), onSuccessContainer = Color(0xFF00210B),
     warning = Color(0xFF8A6A20), warningContainer = Color(0xFFF7E8C4), onWarningContainer = Color(0xFF3A2A00),
+    ratingFill = Color(0xFFC9A961),
 )
 
 private val DarkKoubeiColors = KoubeiColors(
     success = Color(0xFF9CD9AE), successContainer = Color(0xFF14532B), onSuccessContainer = Color(0xFFC3EFCD),
     warning = Color(0xFFEBD69E), warningContainer = Color(0xFF5A4410), onWarningContainer = Color(0xFFF7E8C4),
+    ratingFill = Color(0xFFEBD69E),
 )
 
 private val LocalKoubeiColors = staticCompositionLocalOf { LightKoubeiColors }
